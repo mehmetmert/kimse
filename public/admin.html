@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>kimse · yönetim</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231d1a16'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/admin.css">
+  <script type="module" src="/admin.js"></script>
+</head>
+<body>
+<main class="admin">
+  <h1>kimse <span>yönetim</span></h1>
+
+  <form id="login" class="card" autocomplete="off">
+    <label for="key">Yönetici anahtarı</label>
+    <input id="key" type="password" autocomplete="off" required>
+    <button class="btn small" type="submit">Giriş</button>
+    <p id="login-err" class="err" role="alert" hidden></p>
+  </form>
+
+  <div id="panel" hidden>
+    <p id="stat" class="muted"></p>
+
+    <section class="card">
+      <h2>Sohbette anında engelleme</h2>
+      <p class="muted small">Açıkken, bu sekmede girdiğin sohbetlerde "Bildir" menüsüne anında engelleme seçenekleri eklenir. Karşına çıkan botu tek dokunuşla engellersin. Sekme kapanınca kendiliğinden kapanır.</p>
+      <div class="row">
+        <button id="btn-mode" class="btn small ghost" type="button"></button>
+        <a class="btn small" href="/">Sohbete git</a>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>IP ile engelle</h2>
+      <form id="ban-form">
+        <label for="ban-ip">IP adresi</label>
+        <input id="ban-ip" type="text" inputmode="text" placeholder="örn. 203.0.113.7" required>
+        <label for="ban-hours">Süre</label>
+        <select id="ban-hours">
+          <option value="1">1 saat</option>
+          <option value="24" selected>24 saat</option>
+          <option value="168">7 gün</option>
+          <option value="720">30 gün</option>
+          <option value="8760">1 yıl</option>
+        </select>
+        <button class="btn small" type="submit">Engelle</button>
+      </form>
+      <p id="ban-msg" class="small muted" aria-live="polite"></p>
+    </section>
+
+    <section class="card">
+      <h2>Engelli ağlar</h2>
+      <p class="muted small">Sunucu ham IP tutmaz; liste IP özetlerini gösterir.</p>
+      <ul id="bans"></ul>
+      <button id="btn-refresh" class="btn small ghost" type="button">Yenile</button>
+    </section>
+  </div>
+</main>
+</body>
+</html>

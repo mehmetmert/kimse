@@ -1,0 +1,93 @@
+body {
+  height: auto;
+  overscroll-behavior: auto;
+}
+
+.admin {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 28px 20px 60px;
+}
+
+.admin h1 {
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.05em;
+}
+
+.admin h1 span {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.admin h2 {
+  font-size: 17px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.card form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.card input,
+.card select {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+}
+
+#bans {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#bans li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+  font-size: 14px;
+}
+
+#bans code {
+  font-weight: 600;
+}
+
+#bans .empty {
+  justify-content: center;
+  color: var(--muted);
+}
