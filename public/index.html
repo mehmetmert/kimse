@@ -114,8 +114,28 @@
           <button id="game-x" class="btn xs text" type="button">Bırak</button>
         </div>
         <div id="game-grid" class="grid" role="group" aria-label="Oyun tahtası"></div>
+        <div id="game-quiz" class="quiz" hidden>
+          <p id="quiz-q" class="quiz-q num" aria-live="polite"></p>
+          <div id="quiz-opts" class="quiz-opts"></div>
+          <p id="quiz-info" class="quiz-info num"></p>
+        </div>
+        <div id="game-pick" class="pick" hidden>
+          <p id="pick-step" class="quiz-info num"></p>
+          <div id="pick-opts" class="pick-opts">
+            <button type="button" class="popt" data-side="0"></button>
+            <button type="button" class="popt" data-side="1"></button>
+          </div>
+          <ul id="pick-result" class="pick-result" hidden></ul>
+        </div>
+        <div id="game-hang" class="hang" hidden>
+          <div id="hang-word" class="hang-word" aria-live="polite"></div>
+          <div id="hang-lives" class="hang-lives" aria-hidden="true"></div>
+          <div id="hang-keys" class="hang-keys"></div>
+          <p id="hang-info" class="quiz-info"></p>
+        </div>
         <div id="game-acts" class="game-acts" hidden>
           <button id="game-again" class="btn xs primary" type="button">Rövanş</button>
+          <button id="game-share" class="btn xs ghost" type="button" hidden>Paylaş</button>
           <button id="game-close" class="btn xs ghost" type="button">Kapat</button>
         </div>
       </div>

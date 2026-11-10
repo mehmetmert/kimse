@@ -1213,6 +1213,194 @@ select:focus-visible {
   outline-offset: 2px;
 }
 
+/* Hızlı düello */
+.quiz,
+.pick,
+.hang {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 4px;
+}
+
+.quiz-q {
+  font-size: 30px;
+  font-weight: 800;
+  text-align: center;
+  letter-spacing: -0.02em;
+  transition: color 0.15s ease;
+}
+
+.quiz[data-flash="right"] .quiz-q {
+  color: var(--ok);
+}
+
+.quiz[data-flash="wrong"] .quiz-q {
+  color: var(--danger);
+}
+
+.quiz-opts,
+.pick-opts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.qopt,
+.popt {
+  min-height: 50px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.qopt:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.qopt:not(:disabled):hover,
+.popt:hover {
+  border-color: var(--primary);
+}
+
+.quiz-info {
+  font-size: 13px;
+  text-align: center;
+  color: var(--muted);
+}
+
+/* Bu mu şu mu */
+.popt {
+  min-height: 64px;
+  font-size: 16px;
+}
+
+.pick-result {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.pick-result li {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.pick-result li span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--soft);
+  color: var(--muted);
+}
+
+.pick-result li span.chosen {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.pick-result li.same span.chosen {
+  box-shadow: inset 0 0 0 1.5px var(--ok);
+}
+
+.pick-result i {
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+}
+
+/* Adam asmaca */
+.hang-word {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.hl {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 36px;
+  border-bottom: 3px solid var(--line);
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.hl.got {
+  border-color: var(--ink);
+}
+
+.hl.miss {
+  color: var(--danger);
+}
+
+.hl.dim {
+  color: var(--muted);
+}
+
+.hang-lives {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+}
+
+.hang-lives i {
+  width: 22px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--ok);
+}
+
+.hang-lives i.lost {
+  background: var(--line);
+}
+
+.hang-keys {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 4px;
+}
+
+.hang-keys button {
+  min-height: 38px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.hang-keys button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.hang-keys button.hit {
+  border-color: var(--ok);
+  opacity: 1;
+}
+
+.hang-keys button.miss {
+  text-decoration: line-through;
+}
+
 .game-acts {
   display: flex;
   justify-content: center;
@@ -1396,6 +1584,28 @@ select:focus-visible {
   flex-direction: column;
   gap: 8px;
   margin-top: 8px;
+}
+
+/* Çok seçenekli pencere (Oyunlar): iki sütun */
+.sheet-actions.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.sheet-actions.grid2 .btn {
+  min-height: 46px;
+  padding: 6px 10px;
+  line-height: 1.2;
+  white-space: normal;
+}
+
+.sheet-actions.grid2 .btn.text {
+  grid-column: 1 / -1;
+}
+
+.sheet-card {
+  max-height: calc(100% - 8px);
+  overflow-y: auto;
 }
 
 .noscript {

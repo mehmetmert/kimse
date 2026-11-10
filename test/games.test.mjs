@@ -252,3 +252,146 @@ test('bozuk ya da yabancı mesajlar yok sayılır', async () => {
   }
   assert.equal(a.state, 'idle');
 });
+
+// ---------------- Hızlı düello, Bu mu şu mu, Adam asmaca ----------------
+const { quizQuestions, pickQuestions, normWord, ALPHABET, KINDS } = await import('../public/games.js');
+const tick = () => new Promise((r) => setTimeout(r, 20));
+
+async function started(kind) {
+  const t = match();
+  t.a.invite(kind);
+  await t.pump();
+  t.b.accept();
+  await t.pump();
+  return t;
+}
+
+test('hızlı düello: iki tarafa aynı sorular gelir, şıklar tutarlı', () => {
+  const q1 = quizQuestions('oyun123');
+  const q2 = quizQuestions('oyun123');
+  assert.deepEqual(q1, q2);
+  assert.notDeepEqual(quizQuestions('baska99'), q1);
+  for (const q of q1) {
+    assert.equal(q.opts.length, 4);
+    assert.equal(new Set(q.opts).size, 4);
+    assert.ok(q.ans >= 0 && q.ans < 4);
+    const [a, op, b] = q.text.split(' ');
+    const v = { '+': +a + +b, '−': a - b, '×': a * b, '÷': a / b }[op];
+    assert.equal(q.opts[q.ans], v, `doğru şık hesapla uyuşmalı: ${q.text}`);
+  }
+});
+
+test('hızlı düello: çok doğru yapan kazanır, eşitlikte az yanlış yapan', async () => {
+  const { a, b, pump } = await started('quiz');
+  assert.equal(a.qs[0].text, b.qs[0].text);
+  for (let k = 0; k < 5; k++) assert.equal(a.answer(a.qs[a.qi].ans), true);
+  for (let k = 0; k < 3; k++) b.answer(b.qs[b.qi].ans);
+  b.answer((b.qs[b.qi].ans + 1) % 4); // bir yanlış
+  assert.equal(a.right, 5);
+  assert.equal(b.wrong, 1);
+  a.finish();
+  await pump();
+  assert.equal(a.state, 'playing', 'karşı taraf bitirene kadar sonuç yok');
+  assert.equal(a.answer(0), null, 'bitirdikten sonra cevap verilmez');
+  b.finish();
+  await pump();
+  assert.equal(a.result, 'win');
+  assert.equal(b.result, 'lose');
+  assert.deepEqual(a.score.quiz, { me: 1, them: 0 });
+
+  const t = await started('quiz');
+  t.a.answer(t.a.qs[0].ans);
+  t.b.answer(t.b.qs[0].ans);
+  t.b.answer((t.b.qs[1].ans + 1) % 4);
+  t.a.finish();
+  t.b.finish();
+  await t.pump();
+  assert.equal(t.a.result, 'win', 'eşit doğruda az yanlış yapan kazanır');
+  assert.equal(t.b.result, 'lose');
+});
+
+test('bu mu şu mu: aynı sorular, uyum sayısı iki tarafta aynı', async () => {
+  assert.deepEqual(pickQuestions('x1y2z3', 7), pickQuestions('x1y2z3', 7));
+  const { a, b, pump } = await started('pick');
+  assert.deepEqual(a.qs, b.qs);
+  assert.equal(a.qs.length, KINDS.pick.count);
+  const mine = [0, 0, 1, 1, 0, 1, 0];
+  const theirs = [0, 1, 1, 0, 0, 1, 1];
+  mine.forEach((v) => a.choose(v));
+  assert.equal(a.choose(0), false, 'cevaplar bitince yeni seçim olmaz');
+  await pump();
+  assert.equal(a.state, 'playing');
+  theirs.forEach((v) => b.choose(v));
+  await pump();
+  assert.equal(a.result, 'pick');
+  assert.equal(a.same, 4);
+  assert.equal(b.same, 4);
+});
+
+test('adam asmaca: kelime kilitlenir, harfler açılır, bilen kazanır', async () => {
+  const { a, b, q, ev, pump } = match();
+  assert.equal(normWord('Elma'), 'elma');
+  assert.equal(normWord('el'), '', 'çok kısa');
+  assert.equal(normWord('elma1'), '', 'rakam olmaz');
+  assert.equal(await a.inviteHang('ÇİÇEK'), true);
+  assert.equal(JSON.stringify(q.toB).includes('çiçek'), false, 'kelime davetle gitmez');
+  await pump();
+  assert.equal(b.len, 5);
+  b.accept();
+  await pump();
+  assert.equal(b.role, 'guesser');
+  assert.equal(a.role, 'setter');
+  assert.equal(a.guess('ç'), false, 'kelimeyi yazan tahmin etmez');
+  b.guess('ç');
+  assert.equal(b.guess('i'), false, 'cevap gelmeden ikinci tahmin olmaz');
+  await pump();
+  assert.deepEqual(b.mask, ['ç', '', 'ç', '', '']);
+  for (const l of ['z', 'i', 'e', 'k']) {
+    b.guess(l);
+    await pump();
+  }
+  assert.equal(b.miss, 1);
+  assert.equal(b.result, 'win');
+  assert.equal(a.result, 'lose');
+  await tick();
+  assert.equal(b.revealed, 'çiçek', 'oyun bitince kelime açılır ve doğrulanır');
+  assert.ok(ev.b.includes('reveal'));
+});
+
+test('adam asmaca: hak bitince kelimeyi yazan kazanır; yanlış cevap veren yakalanır', async () => {
+  const t = match();
+  await t.a.inviteHang('kalem');
+  await t.pump();
+  t.b.accept();
+  await t.pump();
+  for (const l of ['z', 'ş', 'ğ', 'ü', 'ö', 'ç']) {
+    t.b.guess(l);
+    await t.pump();
+  }
+  assert.equal(t.b.result, 'lose');
+  assert.equal(t.a.result, 'win');
+  await tick();
+  assert.equal(t.b.revealed, 'kalem');
+
+  // Kelimeyi yazan "e yok" diye yalan söylerse oyun sonunda yakalanır.
+  const u = match();
+  await u.a.inviteHang('ev');
+  assert.equal(u.a.state, 'idle', 'iki harfli kelime kabul edilmez');
+  await u.a.inviteHang('eve');
+  await u.pump();
+  u.b.accept();
+  await u.pump();
+  const send = u.a.send;
+  u.a.send = (m) => send(m.a === 'res' && m.l === 'e' ? { ...m, p: [] } : m);
+  for (const l of ['e', 'z', 'ş', 'ğ', 'ü', 'ö']) {
+    u.b.guess(l);
+    await u.pump();
+  }
+  assert.equal(u.b.result, 'lose');
+  // Kilide uyması için gerçek kelimeyi açmak zorunda; açınca yalanı ortaya çıkar.
+  u.b.onMsg({ a: 'rev', id: u.b.id, w: 'eve', s: u.a.salt });
+  await tick();
+  assert.equal(u.b.result, 'cheat', 'açılan kelime verilen cevaplarla uyuşmuyor');
+  assert.deepEqual(u.b.score.hang, { me: 0, them: 0 }, 'hileyle kazanılan sayılmaz');
+  assert.ok(ALPHABET.length === 29);
+});
