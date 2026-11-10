@@ -15,6 +15,9 @@ const DEAD_MS = 45000; // bu kadar sessizse sohbet biter
 const NOSHOW_MS = 12000; // eşleşen kişi hiç görünmezse yeniden ara
 const TYPING_MS = 5500; // "yazıyor" balonunun ekranda kalma süresi
 const UNKNOWN = { name: 'Biri', hex: '#78818c' };
+const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏']; // menüdeki tepkiler; başka bir şey kabul edilmez
+const KEY_RE = /^[A-Za-z0-9_-]{1,16}:\d{1,9}$/; // mesaj anahtarı: "kimlik:sıra"
+const LONG_MS = 450; // bu kadar basılı tutunca menü açılır
 
 const $ = (id) => document.getElementById(id);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -72,6 +75,7 @@ function show(view) {
   $('app').dataset.view = view;
   if (view !== 'chat') $('strip').style.background = ''; // sohbet dışında şerit bütün renkleri gösterir
   closeSheet();
+  closeMenu();
 }
 
 // input verilirse pencerede bir yazı alanı çıkar; değeri düğmelerin işlevine geçer.
@@ -325,6 +329,8 @@ function newChat(kind, tok) {
     seq: 0,
     last: new Map(), // kimlik → görülen en büyük sıra numarası: yinelenenleri ayıklar
     log: new Map(), // "kimlik:sıra" → { text, el }: yanıtlanan mesajı bulmak için
+    reacts: new Map(), // "kimlik:sıra" → Map(kimlik → emoji): kim hangi tepkiyi verdi
+    menuKey: null, // menüsü açık olan mesaj
     reply: null,
     lastAuthor: '',
     typers: new Map(), // kimlik → "yazıyor" bitiş zamanı
@@ -463,11 +469,15 @@ function addMsg(kind, text, from) {
   list.insertBefore(li, C && C.typingEl && C.typingEl.isConnected ? C.typingEl : null); // "yazıyor" balonu hep en altta
   while (list.children.length > MAX_MSGS) {
     const old = list.firstElementChild;
-    if (C && old.dataset.k) C.log.delete(old.dataset.k);
+    if (C && old.dataset.k) {
+      C.log.delete(old.dataset.k);
+      C.reacts.delete(old.dataset.k);
+    }
     old.remove();
   }
   if (C) paintSeen(C);
   list.scrollTop = list.scrollHeight;
+  if (C && C.menuKey) placeMenu(C); // menü açıkken mesaj kaydıysa menü de onu izlesin
 }
 
 // ---------- okundu bilgisi ----------
@@ -542,6 +552,7 @@ function relabel(C, id) {
   }
   for (const q of $('msgs').querySelectorAll('.quote[data-q]')) fillQuote(C, q, q.dataset.q);
   if (C.reply) fillQuote(C, $('reply-quote'), C.reply);
+  for (const key of C.reacts.keys()) paintReacts(C, key);
 }
 
 function setNick(C, id, raw) {
@@ -560,6 +571,121 @@ function setMyNick(C, raw) {
   C.nick = tidyNick(raw);
   $('me-name').textContent = C.nick || C.me.name;
   enqueue(C, { t: 'n', x: C.nick }, true);
+}
+
+// ---------- emoji tepkisi ----------
+// Herkes bir mesaja tek tepki verir; aynı tepkiye yeniden basmak geri alır. Tepki şifreli zarfla gider.
+function applyReact(C, key, id, e) {
+  if (!C.log.has(key)) return; // ekranda olmayan mesaja gelen tepki yok sayılır
+  let map = C.reacts.get(key);
+  if (!map) {
+    map = new Map();
+    C.reacts.set(key, map);
+  }
+  if (e) map.set(id, e);
+  else map.delete(id);
+  if (!map.size) C.reacts.delete(key);
+  paintReacts(C, key);
+}
+
+function react(C, key, e) {
+  const map = C.reacts.get(key);
+  const next = map && map.get(C.meId) === e ? '' : e;
+  applyReact(C, key, C.meId, next);
+  enqueue(C, { t: 'e', k: key, e: next }, true);
+}
+
+// Tepkiler balonun alt köşesinde küçük bir hap olarak görünür: "❤️😂 3".
+function paintReacts(C, key) {
+  const rec = C.log.get(key);
+  if (!rec || !rec.el.isConnected) return;
+  const map = C.reacts.get(key);
+  let pill = rec.el.querySelector(':scope > .reacts');
+  if (!map || !map.size) {
+    if (pill) pill.remove();
+    rec.el.classList.remove('has-r');
+    return;
+  }
+  if (!pill) {
+    pill = document.createElement('span');
+    pill.className = 'reacts';
+    rec.el.prepend(pill); // konumu CSS'ten; metin hep balonun son öğesi kalsın
+  }
+  const kinds = [...new Set(map.values())].sort((x, y) => REACTIONS.indexOf(x) - REACTIONS.indexOf(y)); // menüdeki sırayla
+  pill.textContent = kinds.slice(0, 3).join('') + (map.size > 1 ? ` ${map.size}` : '');
+  pill.classList.toggle('mine', map.has(C.meId));
+  const who = [...map].map(([id, e]) => {
+    const w = whoOf(C, id);
+    return `${w.mine ? 'Sen' : w.name} ${e}`;
+  });
+  pill.title = who.join(', ');
+  pill.setAttribute('aria-label', 'Tepkiler: ' + who.join(', '));
+  rec.el.classList.add('has-r');
+}
+
+// ---------- mesaj menüsü: basılı tut (fareyle tıkla) → tepki, yanıtla, kopyala ----------
+let menuAt = 0;
+
+function openMenu(C, li) {
+  const key = li.dataset.k;
+  if (!C.log.has(key)) return;
+  closeMenu();
+  C.menuKey = key;
+  const map = C.reacts.get(key);
+  const mine = (map && map.get(C.meId)) || '';
+  $('menu-reacts').replaceChildren(
+    ...REACTIONS.map((e) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.dataset.e = e;
+      b.textContent = e;
+      b.setAttribute('aria-label', e + ' tepkisi');
+      b.setAttribute('aria-pressed', String(e === mine));
+      return b;
+    }),
+  );
+  li.classList.add('picked');
+  $('menu').hidden = false;
+  menuAt = Date.now();
+  placeMenu(C);
+}
+
+// Menüyü mesajın üstüne, sığmazsa altına koyar; ekranın dışına taşırmaz.
+function placeMenu(C) {
+  const rec = C && C.menuKey ? C.log.get(C.menuKey) : null;
+  if (!rec || !rec.el.isConnected) return closeMenu();
+  const panel = $('menu-panel');
+  const r = rec.el.getBoundingClientRect();
+  const vw = document.documentElement.clientWidth;
+  const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+  const w = panel.offsetWidth;
+  const h = panel.offsetHeight;
+  let top = r.top - h - 8;
+  if (top < 8) top = r.bottom + 8;
+  top = Math.max(8, Math.min(top, vh - h - 8));
+  let left = rec.el.classList.contains('me') ? r.right - w : r.left;
+  left = Math.max(8, Math.min(left, vw - w - 8));
+  panel.style.top = top + 'px';
+  panel.style.left = left + 'px';
+}
+
+function closeMenu() {
+  const C = S.chat;
+  if (C && C.menuKey) {
+    const rec = C.log.get(C.menuKey);
+    if (rec) rec.el.classList.remove('picked');
+    C.menuKey = null;
+  }
+  $('menu').hidden = true;
+}
+
+let toastTimer = 0;
+function toast(text) {
+  const el = $('toast');
+  el.textContent = text;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (el.hidden = true), 1600);
 }
 
 // ---------- mesaj yanıtlama ----------
@@ -636,6 +762,8 @@ async function onPayload(C, id, msg) {
     paintSeen(C);
   } else if (msg.t === 'n') {
     setNick(C, id, msg.x);
+  } else if (msg.t === 'e' && typeof msg.k === 'string' && KEY_RE.test(msg.k) && (msg.e === '' || REACTIONS.includes(msg.e))) {
+    applyReact(C, msg.k, id, msg.e);
   } else if (msg.t === 'g' && C.game) {
     await C.game.onMsg(msg.g);
   }
@@ -656,6 +784,7 @@ const REASONS = {
 function endChat(reason) {
   const C = S.chat;
   if (!C || C.over) return;
+  closeMenu();
   C.over = true;
   S.chat = null;
   S.run++;
@@ -667,6 +796,7 @@ function endChat(reason) {
   const n = C.sent + C.recv;
   $('msgs').replaceChildren(); // ekrandaki her şey gider; anahtarlar da C ile birlikte bellekten düşer
   C.log.clear();
+  C.reacts.clear();
   $('input').value = '';
   $('input').blur();
   $('reply-bar').hidden = true;
@@ -1036,26 +1166,48 @@ $('btn-reply-x').onclick = () => {
   if (S.chat) setReply(S.chat, null);
 };
 
-// Mesaja dokunmak (ya da sağa kaydırmak) onu yanıtlar; alıntıya dokunmak asıl mesaja götürür.
-let swipe = null;
-let swiped = 0;
+// Mesaja basılı tutmak (fareyle tıklamak ya da sağ tıklamak) tepki ve yanıt menüsünü açar.
+// Sağa kaydırmak doğrudan yanıtlar; alıntıya dokunmak asıl mesaja götürür.
+let touch = null; // { li, x, y, dx, swipe, timer }
+let lastTouch = 0; // dokunmatikte parmak kalkınca gelen tıklama menü açmasın
 
 $('msgs').addEventListener('click', (ev) => {
   const C = S.chat;
-  if (!C || Date.now() - swiped < 400) return;
+  if (!C) return;
   const q = ev.target.closest('.quote[data-q]');
   if (q) return jumpTo(C, q.dataset.q);
+  if (Date.now() - lastTouch < 800) return; // dokunmatikte kısa dokunuş bir şey yapmaz
   const li = ev.target.closest('.msg[data-k]');
   if (!li) return;
   if (window.getSelection && String(window.getSelection())) return; // metin seçiliyorsa karışma
-  setReply(C, li.dataset.k);
+  openMenu(C, li);
+});
+
+$('msgs').addEventListener('contextmenu', (ev) => {
+  const C = S.chat;
+  const li = ev.target.closest('.msg[data-k]');
+  if (!C || !li) return;
+  ev.preventDefault(); // tarayıcının kendi menüsü yerine bizimki
+  if (C.menuKey !== li.dataset.k) openMenu(C, li);
 });
 
 $('msgs').addEventListener(
   'touchstart',
   (ev) => {
+    if (touch) clearTimeout(touch.timer);
     const li = ev.target.closest('.msg[data-k]');
-    swipe = li && ev.touches.length === 1 ? { li, x: ev.touches[0].clientX, y: ev.touches[0].clientY, dx: 0, on: false } : null;
+    if (!li || ev.touches.length !== 1) {
+      touch = null;
+      return;
+    }
+    const t = { li, x: ev.touches[0].clientX, y: ev.touches[0].clientY, dx: 0, swipe: false, timer: 0 };
+    t.timer = setTimeout(() => {
+      if (touch !== t || t.swipe || !S.chat) return;
+      touch = null;
+      if (navigator.vibrate) navigator.vibrate(12);
+      if (S.chat.menuKey !== li.dataset.k) openMenu(S.chat, li);
+    }, LONG_MS);
+    touch = t;
   },
   { passive: true },
 );
@@ -1063,36 +1215,78 @@ $('msgs').addEventListener(
 $('msgs').addEventListener(
   'touchmove',
   (ev) => {
-    if (!swipe) return;
-    const dx = ev.touches[0].clientX - swipe.x;
-    const dy = ev.touches[0].clientY - swipe.y;
-    if (!swipe.on) {
+    const t = touch;
+    if (!t) return;
+    const dx = ev.touches[0].clientX - t.x;
+    const dy = ev.touches[0].clientY - t.y;
+    if (!t.swipe) {
+      if (Math.abs(dx) > 8 || Math.abs(dy) > 8) clearTimeout(t.timer); // parmak kaydı: basılı tutma değil
       if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) {
-        swipe = null; // dikey kaydırma: listeyi kaydırıyor
+        touch = null; // dikey kaydırma: listeyi kaydırıyor
         return;
       }
       if (dx < 12) return;
-      swipe.on = true;
-      swipe.li.style.transition = 'none';
+      t.swipe = true;
+      t.li.style.transition = 'none';
     }
-    swipe.dx = Math.max(0, Math.min(dx, 72));
-    swipe.li.style.transform = `translateX(${swipe.dx}px)`;
+    t.dx = Math.max(0, Math.min(dx, 72));
+    t.li.style.transform = `translateX(${t.dx}px)`;
   },
   { passive: true },
 );
 
-function endSwipe() {
-  if (!swipe) return;
-  const { li, dx, on } = swipe;
-  swipe = null;
-  if (!on) return;
-  swiped = Date.now();
-  li.style.transition = 'transform 0.15s ease';
-  li.style.transform = '';
-  if (dx >= 48 && S.chat) setReply(S.chat, li.dataset.k);
+function endTouch() {
+  lastTouch = Date.now();
+  const t = touch;
+  touch = null;
+  if (!t) return;
+  clearTimeout(t.timer);
+  if (!t.swipe) return;
+  t.li.style.transition = 'transform 0.15s ease';
+  t.li.style.transform = '';
+  if (t.dx >= 48 && S.chat) setReply(S.chat, t.li.dataset.k);
 }
-$('msgs').addEventListener('touchend', endSwipe);
-$('msgs').addEventListener('touchcancel', endSwipe);
+$('msgs').addEventListener('touchend', endTouch);
+$('msgs').addEventListener('touchcancel', endTouch);
+
+// Menü: boş yere dokununca kapanır. Basılı tutup bırakınca gelebilecek tıklama hemen kapatmasın.
+$('menu').addEventListener('click', (ev) => {
+  if (ev.target === $('menu') && Date.now() - menuAt > 600) closeMenu();
+});
+$('menu').addEventListener('contextmenu', (ev) => {
+  ev.preventDefault();
+  closeMenu();
+});
+
+$('menu-reacts').addEventListener('click', (ev) => {
+  const b = ev.target.closest('button[data-e]');
+  const C = S.chat;
+  if (!b || !C || !C.menuKey) return;
+  const key = C.menuKey;
+  closeMenu();
+  react(C, key, b.dataset.e);
+});
+
+$('menu-reply').onclick = () => {
+  const C = S.chat;
+  if (!C || !C.menuKey) return;
+  const key = C.menuKey;
+  closeMenu();
+  setReply(C, key);
+};
+
+$('menu-copy').onclick = async () => {
+  const C = S.chat;
+  const rec = C && C.menuKey ? C.log.get(C.menuKey) : null;
+  closeMenu();
+  if (!rec) return;
+  try {
+    await navigator.clipboard.writeText(rec.text);
+    toast('Kopyalandı');
+  } catch {
+    openSheet('Mesaj', rec.text, [{ label: 'Tamam' }]); // pano kapalıysa metni göster, elle kopyalansın
+  }
+};
 
 $('sheet').addEventListener('click', (ev) => {
   if (ev.target === $('sheet')) closeSheet();
@@ -1100,7 +1294,8 @@ $('sheet').addEventListener('click', (ev) => {
 
 document.addEventListener('keydown', (ev) => {
   if (ev.key !== 'Escape') return;
-  if (!$('sheet').hidden) closeSheet();
+  if (!$('menu').hidden) closeMenu();
+  else if (!$('sheet').hidden) closeSheet();
   else if (S.chat && S.chat.reply) setReply(S.chat, null);
 });
 
@@ -1145,7 +1340,10 @@ if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', fit);
   window.visualViewport.addEventListener('scroll', fit);
 }
-window.addEventListener('resize', fit);
+window.addEventListener('resize', () => {
+  fit();
+  if (S.chat && S.chat.menuKey) placeMenu(S.chat);
+});
 
 // ---------- başlangıç ----------
 (async function boot() {

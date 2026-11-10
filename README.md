@@ -11,7 +11,9 @@ Canlı adres: https://kimse.vercel.app
 - **Renkler ve ad:** Herkes bir renkle başlar; aynı sohbette iki kişi aynı rengi alamaz. Üstteki şerit o an sohbette olanların renklerini gösterir. İsteyen, başlıktaki "Sen" etiketine dokunup o sohbet için kendine bir ad yazar. Ad yalnızca o sohbette geçerlidir, yeni sohbette yine renk gelir. Küfürlü ya da renk adlarıyla karışacak adlar kabul edilmez.
 - **Koyu mod:** Üstteki ay/güneş düğmesi koyu ve açık görünüm arasında geçer. Seçim yapılmamışsa cihazın ayarı geçerlidir.
 - **Uçtan uca şifreleme:** Mesajlar tarayıcıda şifrelenir, sunucu içeriği okuyamaz. 1'e 1 sohbette "Güvenlik kodu" iki tarafta aynı çıkan altı haneli sayıyı gösterir.
-- **Yanıtlama:** Bir mesaja dokununca (ya da sağa kaydırınca) o mesaja yanıt yazılır. Alıntıya dokunmak asıl mesaja götürür.
+- **Mesaj menüsü:** Mesaja basılı tutunca (bilgisayarda tıklayınca ya da sağ tıklayınca) WhatsApp'taki gibi bir menü açılır: üstte emoji tepkileri, altında "Yanıtla" ve "Kopyala". Dokunmatikte kısa dokunuş bir şey yapmaz.
+- **Emoji tepkisi:** Herkes bir mesaja tek tepki verir (👍 ❤️ 😂 😮 😢 🙏). Tepki mesajın altında görünür, iki kişi tepki verince sayı çıkar. Aynı tepkiye yeniden basmak geri alır.
+- **Yanıtlama:** Menüden "Yanıtla" ya da mesajı sağa kaydırmak. Alıntıya dokunmak asıl mesaja götürür.
 - **"Yazıyor" ve "Görüldü":** Karşı taraf yazarken üç noktalı balon çıkar. Son mesajın görülünce altında "Görüldü" (odada "2 kişi gördü") yazar.
 - **Küfür filtresi:** Küfürlü kelimeler gönderilmeden ve gösterilmeden önce yıldızlanır.
 - **Taş kağıt makas:** 1'e 1 sohbette düğmeye basan rastgele atar. Atış kilitlenir ve iki taraf da basınca aynı anda açılır; kimse diğerininkini önceden göremez.
@@ -68,7 +70,7 @@ Sekiz yanlış anahtar denemesinden sonra o ağ 15 dakika kilitlenir.
 | Veri | Nerede | Ne kadar |
 |---|---|---|
 | Mesaj içeriği (düz metin) | Hiçbir yerde | Sunucu göremez |
-| Şifreli mesajlar, sohbete özel adlar, oyun hamleleri, "yazıyor" ve "görüldü" bilgileri | Redis | Son etkinlikten 2 dakika sonra silinir; 1'e 1 sohbet bitince 45 saniye içinde |
+| Şifreli mesajlar, tepkiler, sohbete özel adlar, oyun hamleleri, "yazıyor" ve "görüldü" bilgileri | Redis | Son etkinlikten 2 dakika sonra silinir; 1'e 1 sohbet bitince 45 saniye içinde |
 | Odadaki üyelerin rengi ve son görülme zamanı | Redis | Oda boşalınca 2 dakika içinde silinir |
 | Ham IP adresi | Hiçbir yerde | Yazılmaz |
 | IP özeti (geri döndürülemez) | Redis | Arama sayacı 11 dakika, bildirim sayacı 24 saat, engel kaydı engel süresi kadar, tekrar engel sayacı 30 gün |
@@ -120,7 +122,7 @@ dev.mjs           yerel geliştirme sunucusu
 
 ## Yeni oyun eklemek
 
-Sohbet mesajları şifreli bir zarfın içinde tür etiketiyle gider: `m` mesaj, `t` yazıyor, `r` görüldü, `n` ad, `g` oyun hamlesi. Sunucu türleri ayırt edemez, yalnızca aktarır; yeni oyun için sunucuda değişiklik gerekmez.
+Sohbet mesajları şifreli bir zarfın içinde tür etiketiyle gider: `m` mesaj, `t` yazıyor, `r` görüldü, `n` ad, `e` tepki, `g` oyun hamlesi. Sunucu türleri ayırt edemez, yalnızca aktarır; yeni oyun için sunucuda değişiklik gerekmez.
 
 `public/rps.js` örnek alınabilir: oyun mantığı DOM'dan bağımsız bir sınıftır, `send` ile hamle yollar, `onMsg` ile karşı hamleyi alır. `public/app.js` içinde `onPayload` gelen hamleyi oyuna iletir.
 
