@@ -202,8 +202,6 @@ function renderHome() {
   $('btn-door').disabled = !ready;
   $('btn-door').hidden = inRoom;
   $('btn-random').hidden = !inRoom;
-  $('tags-box').hidden = inRoom;
-  $('moods-box').hidden = inRoom;
 }
 
 function homeErr(text) {
@@ -281,8 +279,9 @@ async function startSearch(notice = '') {
   if (!cryptoOk || !$('age').checked) return goHome();
   const my = ++S.run;
   S.tk = null;
-  let tag = S.tag; // konu seçildiyse önce o konuda arar
-  let mood = S.mood; // ruh hali de
+  // Konu/ruh haliyle eşleşme kapalı: kullanıcı azken herkes tek havuzda buluşsun. Açmak için S.tag / S.mood ver.
+  let tag = '';
+  let mood = '';
   $('search-title').textContent = ['Aranıyor', TAG_NAMES[tag], MOODS[mood]].filter(Boolean).join(' · ');
   $('btn-lonely-door').hidden = true;
   show('search');
@@ -716,7 +715,6 @@ function saveProfile(C) {
   C.mood = pMood;
   S.listen = listen; // sonraki sohbetlerde de kalsın
   S.mood = pMood;
-  for (const x of $('moods').children) x.setAttribute('aria-pressed', String(x.dataset.mood === S.mood));
   enqueue(C, { t: 'p', m: C.mood, l: C.listen }, true);
 }
 
@@ -1790,20 +1788,6 @@ $('btn-theme').onclick = () => {
 
 $('age').addEventListener('change', renderHome);
 
-// Konu: birine dokun seçilsin, yeniden dokun kalksın.
-$('tags').addEventListener('click', (ev) => {
-  const b = ev.target.closest('button[data-tag]');
-  if (!b) return;
-  S.tag = S.tag === b.dataset.tag ? '' : b.dataset.tag;
-  for (const x of $('tags').children) x.setAttribute('aria-pressed', String(x.dataset.tag === S.tag));
-});
-
-$('moods').addEventListener('click', (ev) => {
-  const b = ev.target.closest('button[data-mood]');
-  if (!b) return;
-  S.mood = S.mood === b.dataset.mood ? '' : b.dataset.mood;
-  for (const x of $('moods').children) x.setAttribute('aria-pressed', String(x.dataset.mood === S.mood));
-});
 $('btn-find').onclick = () => (S.door ? startRoom() : startSearch());
 $('btn-door').onclick = createRoom;
 $('btn-lonely-door').onclick = createRoom;

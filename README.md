@@ -7,7 +7,7 @@ Canlı adres: https://kimse.vercel.app
 ## Neler var
 
 - **Rastgele eşleşme:** "Birini bul" ile o an bekleyen biriyle 1'e 1 eşleşirsin. Girişte tek koşul "18 yaşından büyüğüm" kutusudur.
-- **Konu ve ruh hali (isteğe bağlı):** Ana sayfada konu (Oyun, Müzik, Dertleşme, Dizi film, Spor) ve ruh hali (Mutlu, Üzgün, Moralsiz, Sıkılmış, Yalnız, Heyecanlı) seçersen önce aynı seçimi yapanlarla eşleşirsin; sohbette "Ortak konu" / "Ruh hali" yazar. 20 saniye içinde kimse çıkmazsa arama kendiliğinden herkese açılır. Karşı tarafın ruh hali adının yanında görünür.
+- **Konu ve ruh hali eşleşmesi (şimdilik kapalı):** Kullanıcı azken herkes tek havuzda buluşsun diye ana sayfadan kaldırıldı. Sunucu desteği duruyor; açmak için ana sayfaya seçimi geri ekleyip `public/app.js` içinde `startSearch`'teki `tag` / `mood` değerlerini doldurmak yeter. Profilde seçilen ruh hali eşleşmeyi etkilemez, yalnızca karşı tarafa gösterilir.
 - **Profil ("Sen" etiketi):** Sohbet başlığındaki "Sen" etiketine dokununca ad (yalnızca o sohbette), "Ne dinliyorsun?" ve ruh hali değiştirilir; 1'e 1 sohbette güvenlik kodu da burada. Ne dinlediğin karşı tarafta adının altında "Dinliyor: …" diye görünür. Tarayıcı telefondaki müziği okuyamaz; şarkıyı sen yazarsın.
 - **Titreşim:** MSN'deki gibi: karşı tarafın ekranı sallanır, telefonu titrer, kısa ses çalar. İki titreşim arası en az 10 saniye.
 - **Oda sohbeti:** "Oda oluştur" bir link üretir. Linki açan herkes aynı odaya girer; bir odada en fazla 12 kişi olur.
