@@ -44,3 +44,28 @@ test('cümlede yalnızca küfürlü kelime yıldızlanır, noktalama ve gerisi k
   const once = clean('amk ya siktir');
   assert.equal(clean(once), once);
 });
+
+const { hasLink, stripLinks } = await import('../public/filter.js');
+
+test('link: yaygın biçimler ve kaçamaklar yakalanır', () => {
+  const links = [
+    'https://site.com', 'http://a.b', 'www.google.com', 'site.com', 'SİTE.COM', 'instagram.com/kullanici', 'bit.ly/abc',
+    't.me/kanal', 'wa.me/905551112233', 'mail@site.com.tr', 'güzel.com.tr', 'site[.]com', 'site (dot) com', 'site nokta com',
+    'bak buraya: x.xyz', 'discord.gg/abc', 'ornek.net/yol?x=1',
+  ];
+  for (const l of links) assert.ok(hasLink(l), `yakalanmalıydı: ${l}`);
+});
+
+test('link: sıradan yazılar link sayılmaz', () => {
+  const ok = [
+    'saat 3.30', 'fiyat 1.5 tl', 'Tamam. Top oynadık', 'Evet. Me dedim', 'a.m.k', 'nasılsın?', 'son nokta', 'ben de', 'dot', 'com',
+    'v1.2.3', 'merhaba...', 'tamam.peki', 'ok.', 'Bir. İki. Üç.', 'cokdan.comerttir',
+  ];
+  for (const t of ok) assert.equal(hasLink(t), false, `link sayılmamalıydı: ${t}`);
+});
+
+test('link: yalnızca link kısmı gizlenir', () => {
+  assert.equal(stripLinks('bak site.com çok güzel'), 'bak [link] çok güzel');
+  assert.equal(stripLinks('https://x.com/a ve www.y.org'), '[link] ve [link]');
+  assert.equal(stripLinks('link yok burada'), 'link yok burada');
+});

@@ -23,6 +23,7 @@ Canlı adres: https://kimse.vercel.app
 - **Yanıtlama:** Menüden "Yanıtla" ya da mesajı sağa kaydırmak. Alıntıya dokunmak asıl mesaja götürür.
 - **"Yazıyor" ve "Görüldü":** Karşı taraf yazarken üç noktalı balon çıkar. Son mesajın görülünce altında "Görüldü" (odada "2 kişi gördü") yazar.
 - **Küfür filtresi:** Küfürlü kelimeler gönderilmeden ve gösterilmeden önce yıldızlanır.
+- **Link engeli:** Link içeren mesaj gönderilmez ("Link gönderilemez" uyarısı çıkar, yazı kutuda kalır). `site.com`, `www.`, `http…`, `bit.ly`, `t.me` gibi biçimler ve `site[.]com`, `site nokta com` gibi kaçamaklar yakalanır. Değiştirilmiş bir istemciden gelirse link kısmı "[link]" olarak gizlenir. Ad ve "Ne dinliyorsun?" alanında da geçerli.
 - **Oyunlar (1'e 1 sohbette):** Alttaki "Oyunlar" düğmesinden açılır.
   - *Taş kağıt makas* ve *Zar at:* Taş kağıt makasta Taş, Kağıt, Makas ya da Rastgele seçilir; zarda basan rastgele atar. Atış kilitlenir ve karşı taraf sohbette çıkan düğmelerden seçince ikisi aynı anda açılır; kimse diğerininkini önceden göremez. Zarda kimse kendi zarını seçemez, sonuç iki tarafın gizli sayısından birlikte çıkar.
   - *XOX* ve *Dört bağla:* Biri çağırır, karşı tarafa "Oyna / Hayır" düğmeli bir satır düşer. Kabul edilince tahta yazı alanının üstünde açılır; çağıran başlar, sırayla oynanır. İşaretler ve taşlar oyuncuların renginde. Bitince "Rövanş" ya da "Kapat".

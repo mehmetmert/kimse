@@ -3,7 +3,7 @@
 //   room aynı linki açan birden fazla kişi (oda)
 // Çerez yok; cihaza yazılan tek şey görünüm tercihidir (koyu / açık). Sohbetle ilgili her şey bu sekmenin belleğinde yaşar.
 import { doorId, newKeys, openRoom, openSession, randId } from './e2e.js';
-import { clean } from './filter.js';
+import { clean, hasLink, stripLinks } from './filter.js';
 import { BOARDS, Dice, Match } from './games.js';
 import { NAME, Rps, randomMove } from './rps.js';
 import { COLORS, codeOf, colorsOf } from './words.js';
@@ -622,7 +622,7 @@ const RESERVED = new Set(['sen', 'oda', 'biri', ...COLORS.map((c) => c.name.toLo
 // Geçerli adı döner; boş, küfürlü ya da başkasıyla karışacak adlar için '' (renk kalır).
 function tidyNick(raw) {
   const s = clean(String(raw == null ? '' : raw).replace(/\s+/g, ' ').trim().slice(0, 16));
-  return !s || s.includes('*') || RESERVED.has(s.toLocaleLowerCase('tr')) ? '' : s;
+  return !s || s.includes('*') || hasLink(s) || RESERVED.has(s.toLocaleLowerCase('tr')) ? '' : s;
 }
 
 // Ekrandaki eski mesaj ve alıntılarda adı günceller.
@@ -657,7 +657,14 @@ function setMyNick(C, raw) {
 }
 
 // ---------- ruh hali, ne dinliyorum, titreşim ----------
-const tidyListen = (raw) => clean(String(raw == null ? '' : raw).replace(/\s+/g, ' ').trim().slice(0, 60));
+const tidyListen = (raw) =>
+  clean(
+    stripLinks(String(raw == null ? '' : raw))
+      .replace(/\[link\]/g, ' ') // şarkı linki yazılırsa link kısmı atılır
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 60),
+  );
 
 function sendProfile(C, urgent = true) {
   if (C.mood || C.listen) enqueue(C, { t: 'p', m: C.mood, l: C.listen }, urgent);
@@ -968,7 +975,7 @@ async function onPayload(C, id, msg) {
     const r = msg.r;
     const ok = r && typeof r.w === 'string' && /^[A-Za-z0-9_-]{1,16}$/.test(r.w) && Number.isInteger(r.n);
     C.toAck.set(id, msg.n);
-    addMsg('them', clean(msg.x.slice(0, 2000)), { id, n: msg.n, quoteKey: ok ? `${r.w}:${r.n}` : null });
+    addMsg('them', clean(stripLinks(msg.x.slice(0, 2000))), { id, n: msg.n, quoteKey: ok ? `${r.w}:${r.n}` : null });
     if (Number.isInteger(msg.z) && msg.z >= 1 && msg.z <= 60) vanishLater(C, `${id}:${msg.n}`, msg.z);
     alertTab();
   } else if (msg.t === 't') {
@@ -1679,6 +1686,10 @@ $('composer').addEventListener('submit', (ev) => {
   const inp = $('input');
   const text = clean(inp.value.trim()); // küfür gönderilmeden yıldızlanır
   if (!C || !text) return;
+  if (hasLink(text)) {
+    toast('Link gönderilemez'); // yazı kutuda kalır, düzeltilebilir
+    return;
+  }
   inp.value = '';
   C.sent++;
   C.lastAct = Date.now();

@@ -56,3 +56,19 @@ export function clean(text) {
     return m[1] + '*'.repeat(Math.min([...m[2]].length, 8)) + m[3];
   });
 }
+
+// Link engeli. Mesajlar şifreli olduğu için bu da tarayıcıda yapılır: link içeren mesaj gönderilmez,
+// başka bir yoldan gelirse link kısmı "[link]" olarak gizlenir. "site[.]com", "site nokta com" gibi kaçamakları da yakalar.
+// Boşluklu düz nokta ("Tamam. Top oynadık") link sayılmaz.
+const TLD = 'com|net|org|info|biz|io|co|me|tr|app|dev|gg|ly|tv|link|site|online|xyz|club|live|shop|store|vip|ru|uk|us|cc|to|top|fun|pro|page|sh|ai|ws|im|in|eu';
+const LINK_SRC =
+  String.raw`(?:https?:\/\/|www\.)\S+` +
+  '|' +
+  String.raw`[a-z0-9][a-z0-9-]*(?:(?:\.|\s*(?:\[\.\]|\(\.\)|\[dot\]|\(dot\))\s*|\s+(?:dot|nokta)\s+)[a-z0-9-]+)*` +
+  String.raw`(?:\.|\s*(?:\[\.\]|\(\.\)|\[dot\]|\(dot\))\s*|\s+(?:dot|nokta)\s+)(?:${TLD})(?![a-z0-9])(?:\/\S*)?`;
+const LINK_ONE = new RegExp(LINK_SRC, 'i');
+const LINK_ALL = new RegExp(LINK_SRC, 'gi');
+
+export const hasLink = (text) => LINK_ONE.test(String(text));
+
+export const stripLinks = (text) => String(text).replace(LINK_ALL, '[link]');
