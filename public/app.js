@@ -4,6 +4,7 @@
 // Çerez yok; cihaza yazılan tek şey görünüm tercihidir (koyu / açık). Sohbetle ilgili her şey bu sekmenin belleğinde yaşar.
 import { doorId, newKeys, openRoom, openSession, randId } from './e2e.js';
 import { clean } from './filter.js';
+import { BOARDS, Dice, Match } from './games.js';
 import { NAME, Rps, randomMove } from './rps.js';
 import { COLORS, codeOf, colorsOf } from './words.js';
 
@@ -83,6 +84,7 @@ function openSheet(title, text, actions, input) {
   const box = $('sheet-input');
   $('sheet-title').textContent = title;
   $('sheet-text').textContent = text;
+  $('sheet-text').hidden = !text;
   box.hidden = !input;
   if (input) {
     box.value = input.value || '';
@@ -95,6 +97,7 @@ function openSheet(title, text, actions, input) {
       b.type = 'button';
       b.className = 'btn ' + (a.kind || 'ghost');
       b.textContent = a.label;
+      b.disabled = Boolean(a.disabled);
       b.onclick = () => {
         closeSheet();
         if (a.fn) a.fn(box.value);
@@ -376,7 +379,8 @@ function openChatView(C, firstLine) {
   $('peer-dot').hidden = room;
   $('room-bar').hidden = !room;
   $('btn-end').textContent = room ? 'Çık' : 'Bitir';
-  $('btn-game').hidden = room;
+  $('btn-games').hidden = room;
+  $('game').hidden = true;
   $('btn-code').hidden = room;
   $('btn-report').hidden = room;
   document.querySelector('.chat-foot').hidden = room;
@@ -478,6 +482,7 @@ function addMsg(kind, text, from) {
   if (C) paintSeen(C);
   list.scrollTop = list.scrollHeight;
   if (C && C.menuKey) placeMenu(C); // menü açıkken mesaj kaydıysa menü de onu izlesin
+  return li;
 }
 
 // ---------- okundu bilgisi ----------
@@ -766,6 +771,10 @@ async function onPayload(C, id, msg) {
     applyReact(C, msg.k, id, msg.e);
   } else if (msg.t === 'g' && C.game) {
     await C.game.onMsg(msg.g);
+  } else if (msg.t === 'd' && C.dice) {
+    await C.dice.onMsg(msg.d);
+  } else if (msg.t === 'b' && C.match) {
+    C.match.onMsg(msg.b);
   }
   paintChat(C);
 }
@@ -800,6 +809,7 @@ function endChat(reason) {
   $('input').value = '';
   $('input').blur();
   $('reply-bar').hidden = true;
+  $('game').hidden = true;
   $('end-title').textContent = REASONS[reason] || 'Sohbet bitti';
   $('end-stats').textContent = `${human(secs)} · ${n} mesaj · hepsi silindi`;
   $('btn-again').textContent = S.door ? 'Odaya dön' : 'Yeni sohbet';
@@ -841,9 +851,12 @@ async function startDuo(my, keys, m) {
     (g) => enqueue(C, { t: 'g', g }, true),
     (ev) => onGame(C, ev),
   );
+  C.dice = new Dice((d) => enqueue(C, { t: 'd', d }, true), (ev) => onDice(C, ev), m.slot);
+  C.match = new Match((b) => enqueue(C, { t: 'b', b }, true), (ev) => onMatch(C, ev));
+  C.pend = { rps: null, dice: null, inv: null }; // karşı tarafın beklettiği düğmeli satırlar
   $('btn-code').dataset.code = C.code;
   openChatView(C, 'Mesajlar uçtan uca şifreli.');
-  paintGame(C);
+  paintGames(C);
   duoLoop(C);
 }
 
@@ -1023,29 +1036,217 @@ async function roomLoop(C) {
   }
 }
 
-// ---------- taş kağıt makas (yalnızca 1'e 1) ----------
-// Düğmeye basan rastgele atar. Atış kilitlenir; iki taraf da basınca aynı anda açılır.
+// ---------- oyunlar (yalnızca 1'e 1) ----------
+// Taş kağıt makas ve zar: basan rastgele atar, atış kilitlenir, iki taraf da atınca aynı anda açılır.
+// XOX ve Dört bağla: biri çağırır, diğeri kabul edince sırayla oynanır; çağıran başlar.
 const RESULT = { 1: 'Kazandın', 0: 'Berabere', '-1': 'Kaybettin' };
 
-function paintGame(C) {
-  const g = C.game;
-  const b = $('btn-game');
-  b.disabled = Boolean(g.mine); // attım, karşı tarafı bekliyorum
-  b.textContent = g.mine ? 'Bekleniyor…' : 'Taş kağıt makas';
-  b.classList.toggle('ping', Boolean(g.theirHash) && !g.mine); // karşı taraf attı, sıra bende
+// Sohbete düğmeli bir sistem satırı ekler ("Sen de at", "Oyna"). Düğmeye basılınca ya da iş bitince düğmeler kalkar.
+function addAction(C, text, actions) {
+  const li = addMsg('sys', text);
+  const row = document.createElement('span');
+  row.className = 'acts-inline';
+  for (const a of actions) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn xs ' + (a.kind || 'ghost');
+    b.textContent = a.label;
+    b.onclick = () => {
+      clearActions(li);
+      a.fn();
+    };
+    row.append(b);
+  }
+  li.append(row);
+  return li;
+}
+
+function clearActions(li) {
+  const row = li && li.querySelector('.acts-inline');
+  if (row) row.remove();
+}
+
+// "Oyunlar" düğmesinde nokta: karşı taraf attı ya da çağırdı, sıra bende.
+function paintGames(C) {
+  const waiting = (C.game.theirHash && !C.game.mine) || (C.dice.theirHash && !C.dice.mine) || C.match.state === 'invited';
+  $('btn-games').classList.toggle('ping', Boolean(waiting));
+  paintMatch(C);
+}
+
+async function playRps(C) {
+  if (!alive(C) || C.game.mine) return;
+  C.lastAct = Date.now();
+  const first = !C.game.theirHash;
+  const move = randomMove();
+  clearActions(C.pend.rps);
+  C.pend.rps = null;
+  const ok = await C.game.pick(move);
+  if (ok && first && alive(C)) addMsg('sys', `${NAME[move]} attın. Karşı taraf bekleniyor.`);
+  if (alive(C)) paintGames(C);
 }
 
 function onGame(C, ev) {
   if (!alive(C)) return;
   const g = C.game;
   const peer = whoOf(C, C.peerId).name;
-  if (ev === 'invite') addMsg('sys', `${peer} taş kağıt makas attı. Sıra sende.`);
-  else if (ev === 'cheat') addMsg('sys', 'Geçersiz hamle. Tur iptal.');
-  else if (ev === 'result') {
-    const l = g.last;
-    addMsg('sys', `Sen ${NAME[l.mine]}, ${peer} ${NAME[l.theirs]}. ${RESULT[l.result]}. Skor ${g.score.me} – ${g.score.them}`);
+  if (ev === 'invite') {
+    C.pend.rps = addAction(C, `${peer} taş kağıt makas attı.`, [{ label: 'Sen de at', kind: 'primary', fn: () => playRps(C) }]);
+  } else if (ev === 'cheat' || ev === 'result') {
+    clearActions(C.pend.rps);
+    C.pend.rps = null;
+    if (ev === 'cheat') addMsg('sys', 'Geçersiz hamle. Tur iptal.');
+    else {
+      const l = g.last;
+      addMsg('sys', `Sen ${NAME[l.mine]}, ${peer} ${NAME[l.theirs]}. ${RESULT[l.result]}. Skor ${g.score.me} – ${g.score.them}`);
+    }
   }
-  paintGame(C);
+  paintGames(C);
+}
+
+async function playDice(C) {
+  if (!alive(C) || C.dice.mine) return;
+  C.lastAct = Date.now();
+  const first = !C.dice.theirHash;
+  clearActions(C.pend.dice);
+  C.pend.dice = null;
+  const ok = await C.dice.roll();
+  if (ok && first && alive(C)) addMsg('sys', 'Zar attın. Karşı taraf bekleniyor.');
+  if (alive(C)) paintGames(C);
+}
+
+function onDice(C, ev) {
+  if (!alive(C)) return;
+  const d = C.dice;
+  const peer = whoOf(C, C.peerId).name;
+  if (ev === 'invite') {
+    C.pend.dice = addAction(C, `${peer} zar attı.`, [{ label: 'Sen de at', kind: 'primary', fn: () => playDice(C) }]);
+  } else if (ev === 'cheat' || ev === 'result') {
+    clearActions(C.pend.dice);
+    C.pend.dice = null;
+    if (ev === 'cheat') addMsg('sys', 'Geçersiz zar. Tur iptal.');
+    else {
+      const { mine, theirs, result } = d.last;
+      addMsg(
+        'sys',
+        `Zar: sen ${mine[0]} + ${mine[1]} = ${mine[0] + mine[1]}, ${peer} ${theirs[0]} + ${theirs[1]} = ${theirs[0] + theirs[1]}. ${RESULT[result]}. Skor ${d.score.me} – ${d.score.them}`,
+      );
+    }
+  }
+  paintGames(C);
+}
+
+// Tahta oyunu seç: bekleyen aynı oyun daveti varsa kabul eder, yoksa çağırır.
+function chooseBoard(C, kind) {
+  if (!alive(C)) return;
+  if (C.match.state === 'invited' && C.match.kind === kind) return acceptBoard(C);
+  clearActions(C.pend.inv);
+  C.pend.inv = null;
+  C.match.invite(kind);
+  paintGames(C);
+}
+
+function acceptBoard(C) {
+  clearActions(C.pend.inv);
+  C.pend.inv = null;
+  C.match.accept();
+  paintGames(C);
+}
+
+function declineBoard(C) {
+  clearActions(C.pend.inv);
+  C.pend.inv = null;
+  C.match.decline();
+  paintGames(C);
+}
+
+const OUTCOME = (m, peer) =>
+  ({ win: 'Kazandın', lose: 'Kaybettin', draw: 'Berabere', quit: 'Bıraktın', gone: `${peer} bıraktı` })[m.result] || '';
+
+function onMatch(C, ev) {
+  if (!alive(C)) return;
+  const m = C.match;
+  const peer = whoOf(C, C.peerId).name;
+  if (ev === 'invite') {
+    clearActions(C.pend.inv);
+    C.pend.inv = addAction(C, `${peer} seni ${BOARDS[m.kind].name} oynamaya çağırıyor.`, [
+      { label: 'Oyna', kind: 'primary', fn: () => acceptBoard(C) },
+      { label: 'Hayır', fn: () => declineBoard(C) },
+    ]);
+  } else if (ev === 'withdrawn') {
+    clearActions(C.pend.inv);
+    C.pend.inv = null;
+    addMsg('sys', 'Oyun daveti geri çekildi.');
+  } else if (ev === 'declined') {
+    addMsg('sys', `${peer} oyun davetini geri çevirdi.`);
+  } else if (ev === 'start') {
+    clearActions(C.pend.inv);
+    C.pend.inv = null;
+  } else if (ev === 'over') {
+    const s = m.score[m.kind];
+    addMsg('sys', `${BOARDS[m.kind].name}: ${OUTCOME(m, peer)}. Skor ${s.me} – ${s.them}`);
+  } else if (ev === 'move' && m.turn === 'me' && navigator.vibrate && document.hidden === false) {
+    navigator.vibrate(8); // sıra bana geçti
+  }
+  paintGames(C);
+}
+
+// Tahta: XOX'ta X ve O, Dört bağla'da taşlar; ikisi de oyuncunun renginde.
+function paintMatch(C) {
+  const m = C.match;
+  const box = $('game');
+  const wasHidden = box.hidden;
+  const open = m.state === 'inviting' || m.state === 'playing' || m.state === 'over';
+  box.hidden = !open;
+  if (wasHidden !== box.hidden) fit(); // tahta açılıp kapanınca mesajlar en altta kalsın
+  if (!open) return;
+
+  const spec = BOARDS[m.kind];
+  const peer = whoOf(C, C.peerId);
+  const score = m.score[m.kind];
+  $('game-title').textContent = spec.name;
+  let status;
+  if (m.state === 'inviting') status = `${peer.name} bekleniyor…`;
+  else if (m.state === 'playing') status = m.turn === 'me' ? 'Sıra sende' : `${peer.name} oynuyor…`;
+  else status = `${OUTCOME(m, peer.name)} · ${score.me} – ${score.them}`;
+  $('game-status').textContent = status;
+  $('game-status').dataset.turn = m.state === 'playing' && m.turn === 'me' ? '1' : '';
+  $('game-x').hidden = m.state === 'over';
+  $('game-x').textContent = m.state === 'inviting' ? 'Vazgeç' : 'Bırak';
+  $('game-acts').hidden = m.state !== 'over';
+
+  const grid = $('game-grid');
+  grid.hidden = m.state === 'inviting';
+  box.dataset.kind = m.kind;
+  if (m.state === 'inviting') return;
+  const total = spec.cols * spec.rows;
+  if (grid.dataset.kind !== m.kind || grid.children.length !== total) {
+    grid.dataset.kind = m.kind;
+    grid.replaceChildren(
+      ...Array.from({ length: total }, (_, i) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'cell';
+        b.dataset.i = String(i);
+        const r = Math.floor(i / spec.cols) + 1;
+        const c = (i % spec.cols) + 1;
+        b.setAttribute('aria-label', spec.drop ? `Sütun ${c}` : `Satır ${r}, sütun ${c}`);
+        return b;
+      }),
+    );
+  }
+  const mark = { me: m.first === 'me' ? 'X' : 'O', them: m.first === 'me' ? 'O' : 'X' };
+  const line = new Set(m.line || []);
+  const myTurn = m.state === 'playing' && m.turn === 'me';
+  for (const b of grid.children) {
+    const i = Number(b.dataset.i);
+    const v = m.board[i];
+    b.dataset.v = v || '';
+    b.style.setProperty('--c', v === 'me' ? C.me.hex : v === 'them' ? peer.hex : 'transparent');
+    if (!spec.drop) b.textContent = v ? mark[v] : '';
+    b.classList.toggle('win', line.has(i));
+    b.classList.toggle('last', i === m.lastCell && !line.size);
+    b.disabled = !myTurn || (spec.drop ? m.target(i % spec.cols) < 0 : Boolean(v));
+  }
 }
 
 // ---------- olaylar ----------
@@ -1122,14 +1323,47 @@ $('btn-report').onclick = () => {
   openSheet('Bildir', 'Sohbet biter. Çok bildirilen ağ engellenir.', actions);
 };
 
-$('btn-game').onclick = async () => {
+$('btn-games').onclick = () => {
   const C = S.chat;
-  if (!C || !C.game || C.game.mine) return;
+  if (!C || C.kind !== 'duo') return;
+  const busy = C.match.state === 'inviting' || C.match.state === 'playing';
+  openSheet('Oyunlar', '', [
+    { label: C.game.mine ? 'Taş kağıt makas · bekleniyor' : 'Taş kağıt makas', disabled: Boolean(C.game.mine), fn: () => playRps(C) },
+    { label: C.dice.mine ? 'Zar at · bekleniyor' : 'Zar at', disabled: Boolean(C.dice.mine), fn: () => playDice(C) },
+    { label: 'XOX', disabled: busy, fn: () => chooseBoard(C, 'xox') },
+    { label: 'Dört bağla', disabled: busy, fn: () => chooseBoard(C, 'c4') },
+    { label: 'Vazgeç', kind: 'text' },
+  ]);
+};
+
+$('game-grid').addEventListener('click', (ev) => {
+  const b = ev.target.closest('.cell');
+  const C = S.chat;
+  if (!b || !C || !C.match || !C.match.kind) return;
+  const spec = BOARDS[C.match.kind];
+  const i = Number(b.dataset.i);
   C.lastAct = Date.now();
-  const first = !C.game.theirHash;
-  const move = randomMove();
-  const done = await C.game.pick(move);
-  if (done && first && alive(C)) addMsg('sys', `${NAME[move]} attın. Karşı taraf bekleniyor.`);
+  C.match.move(spec.drop ? i % spec.cols : i); // Dört bağla'da sütunun herhangi bir yerine dokunmak yeter
+});
+
+$('game-x').onclick = () => {
+  const C = S.chat;
+  if (!C) return;
+  if (C.match.state === 'inviting') C.match.decline();
+  else C.match.quit();
+  paintGames(C);
+};
+
+$('game-again').onclick = () => {
+  const C = S.chat;
+  if (C && C.match.kind) chooseBoard(C, C.match.kind);
+};
+
+$('game-close').onclick = () => {
+  const C = S.chat;
+  if (!C) return;
+  C.match.close();
+  paintGames(C);
 };
 
 $('composer').addEventListener('submit', (ev) => {

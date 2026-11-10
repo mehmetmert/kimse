@@ -1003,6 +1003,132 @@ select:focus-visible {
   pointer-events: none;
 }
 
+/* Sohbetteki düğmeli satır: "Sen de at", "Oyna / Hayır" */
+.acts-inline {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+/* --- Oyun tahtası --- */
+.game {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 8px;
+  padding: 6px 14px 4px;
+  border-top: 1px solid var(--line);
+}
+
+.game-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+}
+
+.game-head b {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.game-status {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.game-status[data-turn="1"] {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.grid {
+  --cell: 62px;
+  display: grid;
+  gap: 6px;
+  justify-content: center;
+  align-self: center;
+}
+
+.game[data-kind="xox"] .grid {
+  grid-template-columns: repeat(3, var(--cell));
+}
+
+/* Dört bağla: 7 sütun en dar telefona da sığsın */
+.game[data-kind="c4"] .grid {
+  --cell: min(38px, calc((100vw - 76px) / 7));
+  grid-template-columns: repeat(7, var(--cell));
+  gap: 4px;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--soft);
+}
+
+.cell {
+  display: grid;
+  place-items: center;
+  width: var(--cell);
+  height: var(--cell);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--c);
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cell:disabled {
+  cursor: default;
+}
+
+.cell:not(:disabled):hover {
+  border-color: var(--primary);
+}
+
+.game[data-kind="c4"] .cell {
+  border: 0;
+  border-radius: 50%;
+}
+
+.game[data-kind="c4"] .cell[data-v="me"],
+.game[data-kind="c4"] .cell[data-v="them"] {
+  background: var(--c);
+}
+
+.game[data-kind="c4"] .cell:not(:disabled):hover {
+  background: var(--tint);
+}
+
+/* Son hamle ve kazanan sıra */
+.cell.last {
+  box-shadow: inset 0 0 0 2px var(--muted);
+}
+
+.cell.win {
+  box-shadow: inset 0 0 0 3px var(--ink);
+}
+
+.cell:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.game-acts {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding-bottom: 4px;
+}
+
 /* --- Onay penceresi --- */
 .sheet {
   position: fixed;

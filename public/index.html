@@ -85,6 +85,20 @@
 
       <ul id="msgs" class="msgs" aria-live="polite" aria-label="Mesajlar"></ul>
 
+      <!-- Sıralı oyun tahtası: XOX ve Dört bağla -->
+      <div id="game" class="game" hidden>
+        <div class="game-head">
+          <b id="game-title"></b>
+          <span id="game-status" class="game-status" aria-live="polite"></span>
+          <button id="game-x" class="btn xs text" type="button">Bırak</button>
+        </div>
+        <div id="game-grid" class="grid" role="group" aria-label="Oyun tahtası"></div>
+        <div id="game-acts" class="game-acts" hidden>
+          <button id="game-again" class="btn xs primary" type="button">Rövanş</button>
+          <button id="game-close" class="btn xs ghost" type="button">Kapat</button>
+        </div>
+      </div>
+
       <!-- Yanıtlanan mesaj -->
       <div id="reply-bar" class="reply-bar" hidden>
         <div id="reply-quote" class="quote"><b id="reply-who"></b><span id="reply-text"></span></div>
@@ -99,7 +113,7 @@
       </form>
 
       <nav class="chat-foot" aria-label="Sohbet işlemleri">
-        <button id="btn-game" class="btn xs ghost" type="button">Taş kağıt makas</button>
+        <button id="btn-games" class="btn xs ghost" type="button">Oyunlar</button>
         <button id="btn-code" class="btn xs ghost" type="button">Güvenlik kodu</button>
         <button id="btn-report" class="btn xs text" type="button">Bildir</button>
       </nav>

@@ -16,7 +16,10 @@ Canlı adres: https://kimse.vercel.app
 - **Yanıtlama:** Menüden "Yanıtla" ya da mesajı sağa kaydırmak. Alıntıya dokunmak asıl mesaja götürür.
 - **"Yazıyor" ve "Görüldü":** Karşı taraf yazarken üç noktalı balon çıkar. Son mesajın görülünce altında "Görüldü" (odada "2 kişi gördü") yazar.
 - **Küfür filtresi:** Küfürlü kelimeler gönderilmeden ve gösterilmeden önce yıldızlanır.
-- **Taş kağıt makas:** 1'e 1 sohbette düğmeye basan rastgele atar. Atış kilitlenir ve iki taraf da basınca aynı anda açılır; kimse diğerininkini önceden göremez.
+- **Oyunlar (1'e 1 sohbette):** Alttaki "Oyunlar" düğmesinden açılır.
+  - *Taş kağıt makas* ve *Zar at:* Basan rastgele atar. Atış kilitlenir ve karşı taraf sohbette çıkan "Sen de at" düğmesine basınca ikisi aynı anda açılır; kimse diğerininkini önceden göremez. Zarda kimse kendi zarını seçemez, sonuç iki tarafın gizli sayısından birlikte çıkar.
+  - *XOX* ve *Dört bağla:* Biri çağırır, karşı tarafa "Oyna / Hayır" düğmeli bir satır düşer. Kabul edilince tahta yazı alanının üstünde açılır; çağıran başlar, sırayla oynanır. İşaretler ve taşlar oyuncuların renginde. Bitince "Rövanş" ya da "Kapat".
+  - Karşı taraf attığında ya da çağırdığında "Oyunlar" düğmesinde nokta yanar. Skorlar sohbet boyunca tutulur.
 - **Bildirme ve engel:** Üç farklı ağdan bildirilen ağ otomatik ve geçici olarak engellenir (1 saat, tekrarında 6, 24, 72 saat). Yönetici anında engelleyebilir.
 
 ## Yerelde çalıştır
@@ -112,6 +115,7 @@ public/app.js     arayüz ve sohbet akışı (1'e 1 ve oda)
 public/e2e.js     uçtan uca şifreleme
 public/filter.js  küfür filtresi
 public/rps.js     taş kağıt makas (kilitle, sonra aç)
+public/games.js   zar (ortak rastgelelik), XOX ve Dört bağla (sıralı tahta)
 public/words.js   renkler ve güvenlik kodu
 public/style.css  görünüm; renkler dosyanın başındaki değişkenlerden değişir (açık ve koyu)
 public/theme.js   kayıtlı koyu/açık tercihini sayfa çizilmeden uygular
@@ -122,8 +126,8 @@ dev.mjs           yerel geliştirme sunucusu
 
 ## Yeni oyun eklemek
 
-Sohbet mesajları şifreli bir zarfın içinde tür etiketiyle gider: `m` mesaj, `t` yazıyor, `r` görüldü, `n` ad, `e` tepki, `g` oyun hamlesi. Sunucu türleri ayırt edemez, yalnızca aktarır; yeni oyun için sunucuda değişiklik gerekmez.
+Sohbet mesajları şifreli bir zarfın içinde tür etiketiyle gider: `m` mesaj, `t` yazıyor, `r` görüldü, `n` ad, `e` tepki, `g` taş kağıt makas, `d` zar, `b` tahta oyunu. Sunucu türleri ayırt edemez, yalnızca aktarır; yeni oyun için sunucuda değişiklik gerekmez.
 
-`public/rps.js` örnek alınabilir: oyun mantığı DOM'dan bağımsız bir sınıftır, `send` ile hamle yollar, `onMsg` ile karşı hamleyi alır. `public/app.js` içinde `onPayload` gelen hamleyi oyuna iletir.
+`public/games.js` örnek alınabilir: oyun mantığı DOM'dan bağımsız bir sınıftır, `send` ile hamle yollar, `onMsg` ile karşı hamleyi alır, `notify` ile arayüze haber verir. Gizli seçimli oyunlar `Dice` gibi "kilitle, sonra aç" ile; sıralı tahta oyunları `Match` ile yazılır. Yeni bir tahta oyunu için `BOARDS` listesine boyutu ve kazanma kuralı eklemek çoğu zaman yeter. `public/app.js` içinde `onPayload` gelen hamleyi oyuna iletir.
 
 1'e 1 sohbette iki tarafta aynı çıkan `seed` baytları (`public/e2e.js`) ortak rastgelelik kaynağıdır: iki tarafa aynı soruları üretmek için kullanılabilir.
