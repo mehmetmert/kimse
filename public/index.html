@@ -4,146 +4,138 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
   <title>kimse · anonim sohbet</title>
-  <meta name="description" content="Bir yabancıyla anonim sohbet. Kayıt yok, iz yok.">
+  <meta name="description" content="Anonim sohbet. Sana bir renk verilir; adın yok, iz yok.">
   <meta name="referrer" content="no-referrer">
-  <meta name="theme-color" content="#f3f3ee" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#0d0e0c" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f2f3f5" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0f1114" media="(prefers-color-scheme: dark)">
   <meta property="og:title" content="kimse">
-  <meta property="og:description" content="Bir yabancıyla anonim sohbet. Kayıt yok, iz yok.">
+  <meta property="og:description" content="Anonim sohbet. Sana bir renk verilir; adın yok, iz yok.">
   <meta property="og:type" content="website">
-  <meta name="twitter:card" content="summary">
-  <!-- Alan adın belli olunca: yukarıdaki satırı sil, aşağıdaki iki satırı aç ve ALAN-ADIN yerine kendi adresini yaz.
+  <!-- Alan adı değişirse aşağıdaki iki adresi güncelle: X'te paylaşılan linkte çıkan görselli kart buradan gelir. -->
+  <meta property="og:url" content="https://kimse.vercel.app/">
+  <meta property="og:image" content="https://kimse.vercel.app/og.png">
   <meta name="twitter:card" content="summary_large_image">
-  <meta property="og:image" content="https://ALAN-ADIN/og.png">
-  -->
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23141512'/%3E%3Ccircle cx='32' cy='32' r='11' fill='%234ade80'/%3E%3C/svg%3E">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%232e3a52'/%3E%3Crect x='5' y='7' width='14' height='3' rx='1.5' fill='%23e07f37'/%3E%3Crect x='5' y='14' width='9' height='3' rx='1.5' fill='%233f82c0'/%3E%3C/svg%3E">
   <link rel="preload" href="/fonts/open-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/fonts/open-sans-latin-ext-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/style.css">
+  <script src="/theme.js"></script>
   <script type="module" src="/app.js"></script>
 </head>
 <body>
-<main id="app">
+<main id="app" data-view="home">
+  <div class="card">
 
-  <!-- Ana sayfa -->
-  <section id="v-home" class="view home">
-    <div class="home-top">
-      <h1 class="wordmark" aria-label="kimse"><span aria-hidden="true">k<span class="i">ı</span>mse</span></h1>
-      <p class="tagline">Anonim sohbet. Kayıt yok, iz yok.</p>
-    </div>
+    <!-- Renk şeridi: ana sayfada bütün renkler, sohbette o an oradaki kişilerin renkleri -->
+    <div id="strip" class="strip" aria-hidden="true"></div>
 
-    <div class="home-main">
-      <p id="door-note" class="invited" hidden>Davet edildin</p>
-      <p id="online" class="online" aria-live="polite"></p>
-      <label class="age">
-        <input id="age" type="checkbox">
-        <span>18 yaşından büyüğüm</span>
-      </label>
-      <button id="btn-find" class="btn primary" type="button" disabled>Birini bul</button>
-      <button id="btn-door" class="btn ghost" type="button" disabled>Davet linki oluştur</button>
-      <button id="btn-random" class="btn link" type="button" hidden>Rastgele sohbete geç</button>
-      <p id="home-err" class="err" role="alert" hidden></p>
-    </div>
-
-    <p class="foot">Uçtan uca şifreli · Çerez yok</p>
-  </section>
-
-  <!-- Arama / davet bekleme -->
-  <section id="v-search" class="view center" hidden>
-    <div class="radar" aria-hidden="true"><i></i></div>
-    <h2 id="search-title">Birini arıyorum…</h2>
-    <p id="search-sub" class="muted num" aria-live="polite"></p>
-
-    <div id="door-box" class="doorbox" hidden>
-      <input id="door-link" type="text" readonly aria-label="Davet linki">
-      <div class="row">
-        <button id="btn-copy" class="btn small" type="button">Kopyala</button>
-        <a id="btn-share-door" class="btn small ghost" target="_blank" rel="noopener noreferrer">X'te paylaş</a>
-      </div>
-    </div>
-
-    <button id="btn-lonely-door" class="btn small ghost" type="button" hidden>Davet linki oluştur</button>
-    <button id="btn-cancel" class="btn link" type="button">Vazgeç</button>
-  </section>
-
-  <!-- Sohbet -->
-  <section id="v-chat" class="view chat" hidden>
-    <header class="chat-head">
-      <div class="who">
-        <strong id="peer-name"></strong>
-        <span id="peer-status" class="status" aria-live="polite"></span>
-      </div>
-      <button id="btn-code" class="icon-btn" type="button" aria-label="Güvenlik kodu">
-        <svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8.2 11V8a3.8 3.8 0 0 1 7.6 0v3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    <header class="top">
+      <span class="brand">kimse</span>
+      <span id="online" class="online" aria-live="polite"></span>
+      <button id="btn-theme" class="icon-btn" type="button" aria-label="Koyu ve açık görünüm arasında geç">
+        <svg class="i-moon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+        <svg class="i-sun" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
       </button>
-      <button id="btn-report" class="icon-btn" type="button" aria-label="Bildir">
-        <svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true"><path d="M6 21V4.5M6 5h11.5l-2.2 3.8 2.2 3.8H6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
-      <button id="btn-end" class="btn tiny" type="button">Bitir</button>
     </header>
 
-    <div class="ice">
-      <div class="ice-text">
-        <span class="ice-label">Buz kırıcı</span>
-        <p id="ice-q"></p>
+    <!-- Ana sayfa -->
+    <section id="v-home" class="view mid">
+      <div class="col">
+        <h1 id="home-title" class="title">Anonim sohbet</h1>
+        <p class="sub">Sana bir renk verilir. Adın yok, iz yok.</p>
+        <label class="check">
+          <input id="age" type="checkbox">
+          <span>18 yaşından büyüğüm</span>
+        </label>
+        <button id="btn-find" class="btn primary" type="button" disabled>Birini bul</button>
+        <button id="btn-door" class="btn ghost" type="button" disabled>Oda oluştur</button>
+        <button id="btn-random" class="btn text" type="button" hidden>Rastgele sohbete geç</button>
+        <p id="home-err" class="err" role="alert" hidden></p>
       </div>
-      <button id="btn-ice" class="icon-btn" type="button" aria-label="Başka soru">
-        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M19.5 12a7.5 7.5 0 1 1-2.3-5.4M19.5 4v4h-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
-    </div>
+    </section>
 
-    <ul id="msgs" class="msgs" aria-live="polite" aria-label="Mesajlar"></ul>
-
-    <!-- Taş kağıt makas -->
-    <div id="rps" class="rps" hidden>
-      <p id="rps-status" class="rps-status" aria-live="polite"></p>
-      <div id="rps-picks" class="rps-picks">
-        <button type="button" data-move="t" aria-label="Taş">✊</button>
-        <button type="button" data-move="k" aria-label="Kağıt">✋</button>
-        <button type="button" data-move="m" aria-label="Makas">✌️</button>
-        <button type="button" data-move="?" aria-label="Rastgele seç">🎲</button>
+    <!-- Arama -->
+    <section id="v-search" class="view mid" hidden>
+      <div class="col">
+        <h2 id="search-title" class="title">Aranıyor</h2>
+        <div class="spinner" aria-hidden="true"></div>
+        <p id="search-sub" class="sub num" aria-live="polite"></p>
+        <button id="btn-lonely-door" class="btn ghost" type="button" hidden>Oda oluştur</button>
+        <button id="btn-cancel" class="btn ghost" type="button">Vazgeç</button>
       </div>
-    </div>
+    </section>
 
-    <form id="composer" class="composer" autocomplete="off">
-      <button id="btn-game" class="game-btn" type="button" aria-label="Taş kağıt makas" aria-expanded="false" aria-controls="rps">✊</button>
-      <input id="input" type="text" maxlength="500" placeholder="Bir şey yaz…" enterkeyhint="send" autocomplete="off" aria-label="Mesaj">
-      <button class="send" type="submit" aria-label="Gönder">
-        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
-    </form>
-  </section>
+    <!-- Sohbet: 1'e 1 ve oda aynı ekranı kullanır -->
+    <section id="v-chat" class="view chat" hidden>
+      <header class="chat-head">
+        <div class="who">
+          <strong><i id="peer-dot" class="sq" aria-hidden="true"></i><span id="peer-name"></span></strong>
+          <span id="peer-status" class="status" aria-live="polite"></span>
+        </div>
+        <button id="btn-nick" class="me-tag" type="button" aria-label="Kendine ad ver">Sen <i id="me-dot" class="sq" aria-hidden="true"></i><b id="me-name"></b></button>
+        <button id="btn-end" class="btn sm ghost" type="button">Bitir</button>
+      </header>
 
-  <!-- Sohbet sonu -->
-  <section id="v-end" class="view center" hidden>
-    <h2 id="end-title"></h2>
-    <p id="end-stats" class="stats num"></p>
-    <p class="muted small">Mesajlar silindi.</p>
-    <div class="stack">
-      <button id="btn-again" class="btn primary" type="button">Yeni sohbet</button>
-      <a id="btn-share" class="btn ghost" target="_blank" rel="noopener noreferrer">X'te paylaş</a>
-      <button id="btn-home" class="btn link" type="button">Ana sayfa</button>
-    </div>
-  </section>
+      <!-- Oda linki: yalnızca odada görünür -->
+      <div id="room-bar" class="room-bar" hidden>
+        <span>Oda linki</span>
+        <button id="btn-copy" class="btn xs ghost" type="button">Kopyala</button>
+        <a id="btn-share-door" class="btn xs ghost" target="_blank" rel="noopener noreferrer">X'te paylaş</a>
+      </div>
 
-  <!-- Bilgi / hata / engel -->
-  <section id="v-note" class="view center" hidden>
-    <h2 id="note-title"></h2>
-    <p id="note-text" class="muted"></p>
-    <div class="stack">
-      <button id="btn-note-home" class="btn ghost" type="button">Ana sayfa</button>
-    </div>
-  </section>
+      <ul id="msgs" class="msgs" aria-live="polite" aria-label="Mesajlar"></ul>
+
+      <!-- Yanıtlanan mesaj -->
+      <div id="reply-bar" class="reply-bar" hidden>
+        <div id="reply-quote" class="quote"><b id="reply-who"></b><span id="reply-text"></span></div>
+        <button id="btn-reply-x" class="btn xs text" type="button">Vazgeç</button>
+      </div>
+
+      <form id="composer" class="composer" autocomplete="off">
+        <div class="field">
+          <input id="input" type="text" maxlength="500" placeholder="Mesajını yaz" enterkeyhint="send" autocomplete="off" aria-label="Mesaj">
+          <button class="send" type="submit">Gönder</button>
+        </div>
+      </form>
+
+      <nav class="chat-foot" aria-label="Sohbet işlemleri">
+        <button id="btn-game" class="btn xs ghost" type="button">Taş kağıt makas</button>
+        <button id="btn-code" class="btn xs ghost" type="button">Güvenlik kodu</button>
+        <button id="btn-report" class="btn xs text" type="button">Bildir</button>
+      </nav>
+    </section>
+
+    <!-- Sohbet sonu -->
+    <section id="v-end" class="view mid" hidden>
+      <div class="col">
+        <h2 id="end-title" class="title"></h2>
+        <p id="end-stats" class="sub num"></p>
+        <button id="btn-again" class="btn primary" type="button">Yeni sohbet</button>
+        <a id="btn-share" class="btn ghost" target="_blank" rel="noopener noreferrer">X'te paylaş</a>
+        <button id="btn-home" class="btn text" type="button">Ana sayfa</button>
+      </div>
+    </section>
+
+    <!-- Bilgi / hata / engel -->
+    <section id="v-note" class="view mid" hidden>
+      <div class="col">
+        <h2 id="note-title" class="title"></h2>
+        <p id="note-text" class="sub"></p>
+        <button id="btn-note-home" class="btn ghost" type="button">Ana sayfa</button>
+      </div>
+    </section>
+
+  </div>
 
   <!-- Onay penceresi -->
   <div id="sheet" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="sheet-title">
     <div class="sheet-card">
       <h3 id="sheet-title"></h3>
       <p id="sheet-text"></p>
-      <div id="sheet-actions" class="stack"></div>
+      <input id="sheet-input" class="sheet-input" type="text" autocomplete="off" aria-labelledby="sheet-title" hidden>
+      <div id="sheet-actions" class="sheet-actions"></div>
     </div>
   </div>
-
 </main>
 <noscript><p class="noscript">Bu site JavaScript ile çalışır.</p></noscript>
 </body>

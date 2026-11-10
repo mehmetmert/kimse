@@ -6,7 +6,7 @@
 import { toB64u } from './e2e.js';
 
 export const MOVES = ['t', 'k', 'm']; // taş, kağıt, makas
-export const ICON = { t: '✊', k: '✋', m: '✌️' };
+export const NAME = { t: 'Taş', k: 'Kağıt', m: 'Makas' };
 const BEATS = { t: 'm', k: 't', m: 'k' };
 
 /** 1 kazandın, 0 berabere, -1 kaybettin. */

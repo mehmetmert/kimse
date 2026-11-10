@@ -72,7 +72,7 @@ async function refresh() {
       info.append(id, ` · ${b.why === 'auto' ? 'otomatik' : 'yönetici'} · ${left(b.until)} kaldı`);
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'btn tiny ghost';
+      btn.className = 'btn sm ghost';
       btn.textContent = 'Kaldır';
       btn.onclick = async () => {
         btn.disabled = true;

@@ -1,79 +1,36 @@
 // Ortak anahtardan türetilen, iki tarafta da aynı çıkan küçük şeyler:
-// güvenlik kodu (emoji), takma adlar ve buz kırıcı soru.
+// tarafların renkleri ve sayısal güvenlik kodu.
 
-export const ICE = [
-  'Son zamanlarda seni en çok ne güldürdü?',
-  'Bir süper gücün olsa hangisini seçerdin?',
-  'Şu an neredesin: ev, iş, yol?',
-  'Hiç bıkmadan yiyebileceğin yemek ne?',
-  'En son izlediğin dizi ya da film neydi?',
-  'Sabah insanı mısın, gece kuşu mu?',
-  'Çay mı kahve mi? Gerekçeli karar lütfen.',
-  'Bir günlüğüne herhangi bir şehirde olabilsen neresi olurdu?',
-  'Telefonunda en çok kullandığın uygulama hangisi?',
-  'Çocukken ne olmak istiyordun?',
-  'Dinlemekten utandığın ama sevdiğin bir şarkı var mı?',
-  'Bugün başına gelen en iyi şey neydi?',
-  'Kedi mi köpek mi?',
-  'Zamanda yolculuk: geçmişe mi, geleceğe mi?',
-  'Herkesin sevdiği ama senin sevmediğin şey ne?',
-  'En saçma korkun ne?',
-  'Bir yemeği dünyadan silebilsen hangisini silerdin?',
-  'Hayatın bir film olsa adı ne olurdu?',
-  'Lahmacuna limon sıkılır mı, sıkılmaz mı?',
-  'Menemen soğanlı mı olur, soğansız mı?',
-  'Şu an kafanda çalan şarkı hangisi?',
-  'Piyangodan büyük ikramiye çıksa ilk ne yapardın?',
-  'Hiç unutamadığın bir tatil anın var mı?',
-  'En son ne zaman yeni bir şey denedin?',
-  'Sence en gereksiz icat ne?',
-  'Issız adaya üç şey götürebilsen neler olurdu?',
-  'Yaz mı kış mı?',
-  'İnsanların hakkında yanlış bildiği bir şey ne?',
-  'En iyi yaptığın yemek ne?',
-  'Bir gün 25 saat olsa fazladan saatte ne yapardın?',
-  'Okulda en sevdiğin ders hangisiydi?',
-  'Son okuduğun kitap neydi?',
-  'Şu an canın ne çekiyor?',
-  'Hangi dönemde yaşamak isterdin?',
-  'Uyanınca ilk yaptığın şey ne?',
-  'Seni anında mutlu eden küçük şey ne?',
+// Takma ad yerine renk. Birbirinden kolay ayrılan 12 düz renk.
+export const COLORS = [
+  { name: 'Kırmızı', hex: '#d2504b' },
+  { name: 'Turuncu', hex: '#e07f37' },
+  { name: 'Sarı', hex: '#d1a11a' },
+  { name: 'Yeşil', hex: '#4c9a5e' },
+  { name: 'Turkuaz', hex: '#2c9a8d' },
+  { name: 'Mavi', hex: '#3f82c0' },
+  { name: 'Lacivert', hex: '#35477c' },
+  { name: 'Mor', hex: '#7a58b8' },
+  { name: 'Pembe', hex: '#cf6594' },
+  { name: 'Bordo', hex: '#8a3046' },
+  { name: 'Kahve', hex: '#8a674a' },
+  { name: 'Gri', hex: '#78818c' },
 ];
 
-// 64 emoji: her biri 6 bit. Eski cihazlarda da görünen, birbirine benzemeyen simgeler.
-export const EMOJI = [
-  '🐙', '🍋', '🚲', '🌙', '⭐', '🍉', '🎈', '🐢', '🦊', '🍄', '🌵', '🎸', '🚀', '🧩', '🎁', '🐝',
-  '🍒', '🥐', '⛄', '🔔', '🎲', '🧲', '🌷', '🐳', '🦉', '🍩', '🥝', '🌻', '⚓', '🎩', '🧦', '🌍',
-  '🐌', '🍇', '🥕', '🌈', '🔑', '🎯', '🧭', '🛶', '🐧', '🦋', '🍓', '🥨', '🌴', '⛵', '🎺', '🧵',
-  '📌', '🐞', '🍍', '🥥', '🌋', '🔭', '🎻', '🧸', '🛹', '🐬', '🦔', '🍑', '🥦', '🌊', '⏰', '🎨',
-];
+/**
+ * İki tarafın renkleri (a ve b). İkisi asla aynı olmaz; ayrıca listede en az dört sıra uzaktan
+ * seçilir ki yeşil ile turkuaz gibi birbirine yakın iki renk aynı sohbete düşmesin.
+ */
+export function colorsOf(seed) {
+  const n = COLORS.length;
+  const a = seed[5] % n;
+  const b = (a + 4 + (seed[7] % (n - 7))) % n;
+  return { a: COLORS[a], b: COLORS[b] };
+}
 
-const COLORS = [
-  'Mor', 'Sarı', 'Mavi', 'Yeşil', 'Turuncu', 'Pembe', 'Lacivert', 'Kırmızı',
-  'Turkuaz', 'Gri', 'Beyaz', 'Bordo', 'Eflatun', 'Bej', 'Altın', 'Gümüş',
-];
-
-const NOUNS = [
-  'Kirpi', 'Vapur', 'Martı', 'Simit', 'Lale', 'Kedi', 'Baykuş', 'Çınar',
-  'Nar', 'Bulut', 'Fener', 'Uçurtma', 'Karınca', 'Yunus', 'Leylek', 'Semaver',
-  'Tavşan', 'Papatya', 'Sincap', 'Kaplumbağa', 'Deniz', 'Rüzgar', 'Yıldız', 'Çaydanlık',
-  'Penguen', 'Kelebek', 'Serçe', 'Zeytin', 'Kavun', 'Limon', 'Tren', 'Balon',
-];
-
-/** Beş emojilik güvenlik kodu (30 bit). İki tarafta aynıysa araya giren yok. */
+/** Altı haneli güvenlik kodu. İki tarafta aynıysa araya giren yok. */
 export function codeOf(seed) {
-  return [0, 1, 2, 3, 4].map((i) => EMOJI[seed[i] & 63]).join(' ');
-}
-
-/** Sohbet boyunca geçerli iki takma ad: a ve b tarafı için. */
-export function aliasesOf(seed) {
-  const na = seed[6] & 31;
-  let nb = seed[8] & 31;
-  if (nb === na) nb = (nb + 1) & 31;
-  return { a: `${COLORS[seed[5] & 15]} ${NOUNS[na]}`, b: `${COLORS[seed[7] & 15]} ${NOUNS[nb]}` };
-}
-
-/** İlk buz kırıcı sorunun sırası. */
-export function iceOf(seed) {
-  return ((seed[9] << 8) | seed[10]) % ICE.length;
+  const v = ((seed[0] << 24) | (seed[1] << 16) | (seed[2] << 8) | seed[3]) >>> 0;
+  const s = String(v % 1000000).padStart(6, '0');
+  return s.slice(0, 3) + ' ' + s.slice(3);
 }

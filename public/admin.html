@@ -6,35 +6,36 @@
   <meta name="robots" content="noindex, nofollow">
   <meta name="referrer" content="no-referrer">
   <title>kimse · yönetim</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231d1a16'/%3E%3C/svg%3E">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='9.5' cy='13.5' r='7.5' fill='%232e3a52'/%3E%3Ccircle cx='16.5' cy='8.5' r='5.5' fill='%23aab6cf' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="/admin.css">
+  <script src="/theme.js"></script>
   <script type="module" src="/admin.js"></script>
 </head>
 <body>
 <main class="admin">
   <h1>kimse <span>yönetim</span></h1>
 
-  <form id="login" class="card" autocomplete="off">
+  <form id="login" class="box" autocomplete="off">
     <label for="key">Yönetici anahtarı</label>
     <input id="key" type="password" autocomplete="off" required>
-    <button class="btn small" type="submit">Giriş</button>
+    <button class="btn sm" type="submit">Giriş</button>
     <p id="login-err" class="err" role="alert" hidden></p>
   </form>
 
   <div id="panel" hidden>
     <p id="stat" class="muted"></p>
 
-    <section class="card">
+    <section class="box">
       <h2>Sohbette anında engelleme</h2>
       <p class="muted small">Açıkken, bu sekmede girdiğin sohbetlerde "Bildir" menüsüne anında engelleme seçenekleri eklenir. Karşına çıkan botu tek dokunuşla engellersin. Sekme kapanınca kendiliğinden kapanır.</p>
       <div class="row">
-        <button id="btn-mode" class="btn small ghost" type="button"></button>
-        <a class="btn small" href="/">Sohbete git</a>
+        <button id="btn-mode" class="btn sm ghost" type="button"></button>
+        <a class="btn sm" href="/">Sohbete git</a>
       </div>
     </section>
 
-    <section class="card">
+    <section class="box">
       <h2>IP ile engelle</h2>
       <form id="ban-form">
         <label for="ban-ip">IP adresi</label>
@@ -47,16 +48,16 @@
           <option value="720">30 gün</option>
           <option value="8760">1 yıl</option>
         </select>
-        <button class="btn small" type="submit">Engelle</button>
+        <button class="btn sm" type="submit">Engelle</button>
       </form>
       <p id="ban-msg" class="small muted" aria-live="polite"></p>
     </section>
 
-    <section class="card">
+    <section class="box">
       <h2>Engelli ağlar</h2>
       <p class="muted small">Sunucu ham IP tutmaz; liste IP özetlerini gösterir.</p>
       <ul id="bans"></ul>
-      <button id="btn-refresh" class="btn small ghost" type="button">Yenile</button>
+      <button id="btn-refresh" class="btn sm ghost" type="button">Yenile</button>
     </section>
   </div>
 </main>

@@ -6,69 +6,86 @@ body {
 .admin {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  max-width: 520px;
+  gap: 14px;
+  max-width: 480px;
   margin: 0 auto;
-  padding: 28px 20px 60px;
+  padding: 28px 16px 60px;
 }
 
 .admin h1 {
-  font-size: 34px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 22px;
   font-weight: 800;
-  line-height: 1.1;
-  letter-spacing: -0.05em;
+  letter-spacing: -0.03em;
 }
 
 .admin h1 span {
   font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--muted);
 }
 
 .admin h2 {
-  font-size: 17px;
+  font-size: 15px;
+  font-weight: 700;
 }
 
-.card {
+.muted {
+  color: var(--muted);
+}
+
+.small {
+  font-size: 13px;
+}
+
+.box {
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 16px;
-  border: 1.5px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
 }
 
-.card form {
+.box form {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.card label {
-  font-size: 13px;
+.box label {
+  font-size: 12.5px;
   font-weight: 600;
   color: var(--muted);
 }
 
-.card input,
-.card select {
+.box input,
+.box select {
   width: 100%;
   min-height: 44px;
   padding: 0 12px;
-  border: 1.5px solid var(--line);
+  border: 1px solid var(--line);
   border-radius: 10px;
-  background: var(--bg);
+  background: var(--card);
   color: var(--ink);
-  font: inherit;
+  font-size: 16px;
+}
+
+.box input:focus-visible,
+.box select:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
 }
 
 #bans {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 #bans li {
@@ -76,18 +93,19 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 8px 8px 8px 12px;
   border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--bg);
-  font-size: 14px;
+  border-radius: 10px;
+  font-size: 13.5px;
 }
 
 #bans code {
-  font-weight: 600;
+  font-family: inherit;
+  font-weight: 700;
 }
 
 #bans .empty {
   justify-content: center;
+  padding: 12px;
   color: var(--muted);
 }

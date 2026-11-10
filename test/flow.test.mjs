@@ -14,7 +14,7 @@ const { handle, resetCore } = await import('../lib/core.js');
 const { resetMem } = await import('../lib/store.js');
 const { normIp } = await import('../lib/util.js');
 const { newKeys, openSession, doorId, randId } = await import('../public/e2e.js');
-const { EMOJI, ICE, codeOf, aliasesOf, iceOf } = await import('../public/words.js');
+const { COLORS, codeOf, colorsOf } = await import('../public/words.js');
 
 let T = 1_800_000_000_000;
 setClock(() => T);
@@ -92,12 +92,11 @@ test('iki kişi eşleşir, mesajlar şifreli gider ve iki yönde okunur', async 
   assert.equal(b.m.slot, 'b');
   assert.equal(a.m.room, b.m.room);
 
-  // İki taraf aynı güvenlik kodunu, takma adları ve buz kırıcıyı türetir.
+  // İki taraf aynı güvenlik kodunu ve aynı renk çiftini türetir.
   assert.equal(codeOf(a.sess.seed), codeOf(b.sess.seed));
-  assert.deepEqual(aliasesOf(a.sess.seed), aliasesOf(b.sess.seed));
-  assert.equal(iceOf(a.sess.seed), iceOf(b.sess.seed));
-  const names = aliasesOf(a.sess.seed);
-  assert.notEqual(names.a, names.b);
+  assert.deepEqual(colorsOf(a.sess.seed), colorsOf(b.sess.seed));
+  const names = colorsOf(a.sess.seed);
+  assert.notEqual(names.a.name, names.b.name);
 
   const sent = await a.sync(['merhaba', 'nasılsın? çğıöşü 🙂']);
   assert.equal(sent.ok, true);
@@ -356,12 +355,21 @@ test('IP indirgeme: IPv4 aynen, IPv6 /64, haritalı adres IPv4 olarak', () => {
   assert.equal(normIp('saçma'), 'unknown');
 });
 
-test('sözcük listeleri tutarlı', () => {
-  assert.equal(EMOJI.length, 64);
-  assert.equal(new Set(EMOJI).size, 64);
-  assert.ok(ICE.length >= 30);
-  const seed = new Uint8Array(32).fill(255);
-  assert.equal(codeOf(seed).split(' ').length, 5);
-  const n = aliasesOf(new Uint8Array(32)); // bütün baytlar aynıyken bile adlar farklı çıkmalı
-  assert.notEqual(n.a, n.b);
+test('renkler: iki tarafa hiçbir durumda aynı renk düşmez; güvenlik kodu altı hanelidir', () => {
+  assert.equal(new Set(COLORS.map((c) => c.name)).size, COLORS.length);
+  assert.equal(new Set(COLORS.map((c) => c.hex)).size, COLORS.length);
+  const seed = new Uint8Array(32);
+  for (let x = 0; x < 256; x++) {
+    for (let y = 0; y < 256; y++) {
+      seed[5] = x;
+      seed[7] = y;
+      const c = colorsOf(seed);
+      assert.notEqual(c.a.name, c.b.name);
+      // Listede en az dört sıra uzak: birbirine yakın tonlar aynı sohbete düşmez.
+      const d = Math.abs(COLORS.indexOf(c.a) - COLORS.indexOf(c.b));
+      assert.ok(Math.min(d, COLORS.length - d) >= 4, `${c.a.name} ile ${c.b.name} fazla yakın`);
+    }
+  }
+  assert.match(codeOf(new Uint8Array(32).fill(255)), /^[0-9]{3} [0-9]{3}$/);
+  assert.match(codeOf(new Uint8Array(32)), /^[0-9]{3} [0-9]{3}$/);
 });

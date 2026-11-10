@@ -1,16 +1,20 @@
-// Arayüz ve sohbet akışı.
-// Cihaza hiçbir şey yazılmaz: çerez yok, localStorage yok. Her şey bu sekmenin belleğinde yaşar.
-import { doorId, newKeys, openSession, randId } from './e2e.js';
-import { ICON, Rps, randomMove } from './rps.js';
-import { ICE, aliasesOf, codeOf, iceOf } from './words.js';
+// Arayüz ve sohbet akışı. İki tür sohbet aynı ekranı kullanır:
+//   duo  rastgele eşleşen iki kişi
+//   room aynı linki açan birden fazla kişi (oda)
+// Çerez yok; cihaza yazılan tek şey görünüm tercihidir (koyu / açık). Sohbetle ilgili her şey bu sekmenin belleğinde yaşar.
+import { doorId, newKeys, openRoom, openSession, randId } from './e2e.js';
+import { clean } from './filter.js';
+import { NAME, Rps, randomMove } from './rps.js';
+import { COLORS, codeOf, colorsOf } from './words.js';
 
 const API = '/api/a';
-const MAX_VISIBLE = 14; // ekranda kalan mesaj sayısı; eskiler uçar
+const MAX_MSGS = 200; // ekranda tutulan en fazla mesaj
 const PING_MS = 8000; // "buradayım" işareti aralığı
 const STALE_MS = 20000; // karşı taraf bu kadar sessizse uyarı
 const DEAD_MS = 45000; // bu kadar sessizse sohbet biter
 const NOSHOW_MS = 12000; // eşleşen kişi hiç görünmezse yeniden ara
 const TYPING_MS = 5500; // "yazıyor" balonunun ekranda kalma süresi
+const UNKNOWN = { name: 'Biri', hex: '#78818c' };
 
 const $ = (id) => document.getElementById(id);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -65,12 +69,22 @@ const VIEWS = ['home', 'search', 'chat', 'end', 'note'];
 function show(view) {
   S.view = view;
   for (const n of VIEWS) $('v-' + n).hidden = n !== view;
+  $('app').dataset.view = view;
+  if (view !== 'chat') $('strip').style.background = ''; // sohbet dışında şerit bütün renkleri gösterir
   closeSheet();
 }
 
-function openSheet(title, text, actions) {
+// input verilirse pencerede bir yazı alanı çıkar; değeri düğmelerin işlevine geçer.
+function openSheet(title, text, actions, input) {
+  const box = $('sheet-input');
   $('sheet-title').textContent = title;
   $('sheet-text').textContent = text;
+  box.hidden = !input;
+  if (input) {
+    box.value = input.value || '';
+    box.placeholder = input.placeholder || '';
+    box.maxLength = input.max || 100;
+  }
   $('sheet-actions').replaceChildren(
     ...actions.map((a) => {
       const b = document.createElement('button');
@@ -79,12 +93,13 @@ function openSheet(title, text, actions) {
       b.textContent = a.label;
       b.onclick = () => {
         closeSheet();
-        if (a.fn) a.fn();
+        if (a.fn) a.fn(box.value);
       };
       return b;
     }),
   );
   $('sheet').hidden = false;
+  if (input) box.focus();
 }
 
 function closeSheet() {
@@ -105,6 +120,16 @@ function showBan(until) {
   showNote('Bu ağ engellendi', `Yaklaşık ${left} sonra yeniden deneyebilirsin.`);
 }
 
+// Sunucunun "olmaz" yanıtlarını ekrana çevirir. Tanıdığı bir hata ise true döner.
+function refused(res) {
+  if (res.err === 'ban') showBan(res.until);
+  else if (res.err === 'rate') showNote('Çok fazla deneme', `${Math.max(1, Math.ceil(res.retry / 60))} dakika sonra yeniden dene.`);
+  else if (res.err === 'setup') showNote('Sunucu kurulumu eksik', 'Redis bağlı değil.');
+  else if (res.err === 'full') showNote('Oda dolu', 'Bir odada en fazla 12 kişi olabilir.');
+  else return false;
+  return true;
+}
+
 // Klavye açılınca yazı alanı görünür kalsın (özellikle uygulama içi tarayıcılarda).
 function fit() {
   const vv = window.visualViewport;
@@ -115,14 +140,14 @@ function fit() {
 
 // ---------- ana sayfa ----------
 function renderHome() {
-  const inDoor = Boolean(S.door);
+  const inRoom = Boolean(S.door);
   const ready = cryptoOk && $('age').checked; // yaş kutusu işaretlenmeden sohbet açılmaz
-  $('door-note').hidden = !inDoor;
-  $('btn-find').textContent = inDoor ? 'Sohbete gir' : 'Birini bul';
+  $('home-title').textContent = inRoom ? 'Oda sohbeti' : 'Anonim sohbet';
+  $('btn-find').textContent = inRoom ? 'Odaya gir' : 'Birini bul';
   $('btn-find').disabled = !ready;
   $('btn-door').disabled = !ready;
-  $('btn-door').hidden = inDoor;
-  $('btn-random').hidden = !inDoor;
+  $('btn-door').hidden = inRoom;
+  $('btn-random').hidden = !inRoom;
 }
 
 function homeErr(text) {
@@ -157,8 +182,8 @@ function goHome() {
   refreshHome();
 }
 
-// ---------- davet linki ----------
-// Davet sırrı linkin # sonrasında durur; tarayıcı bu kısmı sunucuya göndermez.
+// ---------- oda linki ----------
+// Oda sırrı linkin # sonrasında durur; tarayıcı bu kısmı sunucuya göndermez.
 function readDoorSecret() {
   const h = location.hash.match(/(?:^#|&)o=([A-Za-z0-9_-]{8,40})(?:&|$)/);
   if (h) return h[1];
@@ -170,7 +195,7 @@ async function setDoor(secret) {
   S.door = secret ? { secret, id: await doorId(secret) } : null;
 }
 
-// Adres çubuğundaki davet ile bellekteki aynı kalsın (örn. açık sekmeye davet linki yapıştırılırsa).
+// Adres çubuğundaki oda ile bellekteki aynı kalsın (örn. açık sekmeye oda linki yapıştırılırsa).
 async function syncDoor() {
   const secret = readDoorSecret();
   if ((secret || '') === (S.door ? S.door.secret : '')) return;
@@ -180,11 +205,13 @@ async function syncDoor() {
 
 const doorUrl = () => `${location.origin}/#o=${S.door.secret}`;
 
-async function createDoor() {
+async function createRoom() {
+  const tk = S.tk;
+  if (tk) api('leave', { tk }).catch(() => {}); // aramadan odaya geçiliyorsa sırayı bırak
   const secret = randId(9);
   await setDoor(secret);
   history.replaceState(null, '', '#o=' + secret);
-  startSearch();
+  startRoom();
 }
 
 function leaveDoor() {
@@ -193,30 +220,21 @@ function leaveDoor() {
   renderHome();
 }
 
-// ---------- arama ----------
+// ---------- rastgele arama ----------
 async function startSearch(notice = '') {
   if (!cryptoOk || !$('age').checked) return goHome();
   const my = ++S.run;
   S.tk = null;
-  const door = S.door;
-  $('search-title').textContent = door ? 'Davet linkin hazır' : 'Birini arıyorum…';
-  $('door-box').hidden = !door;
+  $('search-title').textContent = 'Aranıyor';
   $('btn-lonely-door').hidden = true;
-  if (door) {
-    $('door-link').value = doorUrl();
-    $('btn-copy').textContent = 'Kopyala';
-    $('btn-share-door').href = xIntent(`Benimle anonim konuş:\n${doorUrl()}`);
-  }
   show('search');
 
   const t0 = Date.now();
   const paint = () => {
     const s = Math.floor((Date.now() - t0) / 1000);
-    const clock = mmss(s);
-    const lonely = !door && s >= 40;
+    const lonely = s >= 40;
     $('btn-lonely-door').hidden = !lonely;
-    $('search-sub').textContent =
-      notice && s < 4 ? notice : door ? `Biri açınca sohbet başlar · ${clock}` : lonely ? `Şu an kimse yok · ${clock}` : clock;
+    $('search-sub').textContent = notice && s < 4 ? notice : lonely ? `Şu an kimse yok · ${mmss(s)}` : mmss(s);
   };
   paint();
   const timer = setInterval(paint, 1000);
@@ -239,7 +257,7 @@ async function startSearch(notice = '') {
               keep: polls % 9 === 0 ? 1 : 0,
               hb: hb(),
             })
-          : await api('find', { cid, pub: keys.pub, door: door ? door.id : '' });
+          : await api('find', { cid, pub: keys.pub });
       } catch {
         /* ağ hatası: aşağıda sayılır */
       }
@@ -255,11 +273,7 @@ async function startSearch(notice = '') {
       }
       errs = 0;
       if (!res.ok) {
-        if (res.err === 'ban') return showBan(res.until);
-        if (res.err === 'rate') {
-          return showNote('Çok fazla arama', `${Math.max(1, Math.ceil(res.retry / 60))} dakika sonra yeniden dene.`);
-        }
-        if (res.err === 'setup') return showNote('Sunucu kurulumu eksik', 'Redis bağlı değil.');
+        if (refused(res)) return;
         if (res.err === 'expired') {
           S.tk = null; // bilet eskidi: yeni aramayla devam
           misses = 0;
@@ -271,7 +285,7 @@ async function startSearch(notice = '') {
       if (res.tk) S.tk = res.tk;
       if (res.matched) {
         S.tk = null;
-        return startChat(my, keys, res.matched);
+        return startDuo(my, keys, res.matched);
       }
       if (res.inSlot !== undefined) misses = res.inSlot ? 0 : misses + 1;
       polls++;
@@ -292,123 +306,208 @@ function cancelSearch() {
   goHome();
 }
 
-// ---------- sohbet ----------
+// ---------- sohbet: ortak kısım ----------
 const alive = (C) => S.chat === C && !C.over;
 
-async function startChat(my, keys, m) {
-  let sess;
-  try {
-    sess = await openSession({
-      priv: keys.priv,
-      myPub: keys.pub,
-      peerPub: m.peerPub,
-      slot: m.slot,
-      room: m.room,
-      doorSecret: S.door ? S.door.secret : '',
-    });
-  } catch {
-    sess = null;
-  }
-  if (!sess || my !== S.run) {
-    api('leave', { tok: m.tok }).catch(() => {});
-    if (my === S.run) startSearch('Eşleşme tutmadı, yeniden arıyorum…');
-    return;
-  }
-
-  const names = aliasesOf(sess.seed);
+function newChat(kind, tok) {
   const t = Date.now();
-  const C = {
-    tok: m.tok,
-    sess,
-    code: codeOf(sess.seed),
-    cur: 0, // karşı tarafın listesinde okuduğumuz yer
+  return {
+    kind,
+    tok,
+    seal: null, // (nesne) → şifreli metin
+    meId: '', // duo: 'a' ya da 'b'; oda: sunucunun verdiği üye kimliği
+    me: UNKNOWN, // benim rengim
+    nick: '', // bu sohbet için seçtiğim ad; boşsa rengim görünür
+    people: new Map(), // kimlik → { name (renk adı), hex, c, gone, nick }
+    cur: kind === 'duo' ? 0 : '0-0', // okuduğumuz yer
     out: [], // gönderilmeyi bekleyen şifreli mesajlar
     q: Promise.resolve(), // şifreleme sırası: mesajlar sıra numarasıyla aynı düzende çıksın
     seq: 0,
-    peerMax: 0, // karşıdan görülen en büyük sıra numarası: yinelenenleri ayıklar
+    last: new Map(), // kimlik → görülen en büyük sıra numarası: yinelenenleri ayıklar
+    log: new Map(), // "kimlik:sıra" → { text, el }: yanıtlanan mesajı bulmak için
+    reply: null,
+    lastAuthor: '',
+    typers: new Map(), // kimlik → "yazıyor" bitiş zamanı
+    typingEl: null,
+    toAck: new Map(), // kimlik → gördüğüm ama henüz "gördüm" demediğim son mesajın sırası
+    seenBy: new Map(), // kimlik → o kişinin benim mesajlarımdan gördüğü son sıra
+    seenEl: null,
     t0: t,
-    waitFrom: t,
-    peerSeen: 0,
-    peerLeft: false,
     lastAct: t,
     lastPing: 0,
     lastTyping: 0,
-    typingUntil: 0,
-    typingEl: null,
     sent: 0,
     recv: 0,
     fails: 0,
-    ice: iceOf(sess.seed),
-    peer: m.slot === 'a' ? names.b : names.a,
-    game: null,
     over: false,
     wake: null,
     tick: 0,
+    game: null,
   };
-  C.game = new Rps(
-    (g) => enqueue(C, { t: 'g', g }, true),
-    (ev) => onGame(C, ev),
-  );
-  S.chat = C;
+}
 
-  $('peer-name').textContent = C.peer;
-  $('btn-code').dataset.code = C.code;
+// Bir kişinin görünen adı: kendine ad verdiyse o, vermediyse rengi.
+function whoOf(C, id) {
+  if (id === C.meId) return { name: C.nick || C.me.name, hex: C.me.hex, mine: true };
+  const p = C.people.get(id) || UNKNOWN;
+  return { name: p.nick || p.name, hex: p.hex, mine: false };
+}
+const present = (C) => [...C.people.values()].filter((p) => !p.gone);
+
+// Şerit o an sohbette olanların renklerini gösterir: 1'e 1'de iki renk, odada kaç kişi varsa.
+function paintStrip(C) {
+  const cols =
+    C.kind === 'duo'
+      ? [...present(C).map((p) => p.hex), C.me.hex]
+      : [...present(C), { ...C.me, c: C.myColor }].sort((a, b) => a.c - b.c).map((p) => p.hex);
+  const step = 100 / cols.length;
+  $('strip').style.background = `linear-gradient(90deg, ${cols.map((c, i) => `${c} 0 ${((i + 1) * step).toFixed(3)}%`).join(', ')})`;
+}
+
+function openChatView(C, firstLine) {
+  S.chat = C;
+  const room = C.kind === 'room';
+  $('peer-dot').hidden = room;
+  $('room-bar').hidden = !room;
+  $('btn-end').textContent = room ? 'Çık' : 'Bitir';
+  $('btn-game').hidden = room;
+  $('btn-code').hidden = room;
+  $('btn-report').hidden = room;
+  document.querySelector('.chat-foot').hidden = room;
+  $('me-name').textContent = C.nick || C.me.name;
+  $('me-dot').style.backgroundColor = C.me.hex;
   $('msgs').replaceChildren();
   $('input').value = '';
-  setTray(false);
-  addMsg('sys', 'Mesajlar uçtan uca şifreli.');
-  paintIce(C);
+  setReply(C, null);
+  addMsg('sys', firstLine);
   paintChat(C);
-  paintGame(C);
   show('chat');
+  paintStrip(C);
   fit();
   C.tick = setInterval(() => paintChat(C), 1000);
   $('input').focus({ preventScroll: true });
-  chatLoop(C);
 }
 
 function paintChat(C) {
   if (!alive(C)) return;
   const now = Date.now();
-  const typing = C.typingUntil > now;
-  setTyping(C, typing);
-  let text = 'çevrimiçi';
+  for (const [id, until] of C.typers) if (until <= now) C.typers.delete(id);
+  const typers = [...C.typers.keys()];
+  setTyping(C, typers.length ? whoOf(C, typers[0]) : null);
+
+  let text;
   let state = 'on';
-  if (C.fails >= 2) [text, state] = ['bağlantın zayıf…', 'off'];
-  else if (!C.peerSeen) [text, state] = ['bağlanıyor…', 'off'];
-  else if (now - C.peerSeen > STALE_MS) [text, state] = ['bağlantısı bekleniyor…', 'off'];
-  else if (typing) [text, state] = ['yazıyor…', 'typing'];
+  if (C.kind === 'duo') {
+    const peer = whoOf(C, C.peerId);
+    $('peer-name').textContent = peer.name;
+    $('peer-dot').style.backgroundColor = peer.hex;
+    text = 'çevrimiçi';
+    if (C.fails >= 2) [text, state] = ['bağlantın zayıf…', 'off'];
+    else if (!C.peerSeen) [text, state] = ['bağlanıyor…', 'off'];
+    else if (now - C.peerSeen > STALE_MS) [text, state] = ['bağlantısı bekleniyor…', 'off'];
+    else if (typers.length) [text, state] = ['yazıyor…', 'typing'];
+  } else {
+    $('peer-name').textContent = 'Oda';
+    text = `${present(C).length + 1} kişi`;
+    if (C.fails >= 2) [text, state] = ['bağlantın zayıf…', 'off'];
+    else if (typers.length === 1) [text, state] = [`${whoOf(C, typers[0]).name} yazıyor…`, 'typing'];
+    else if (typers.length > 1) [text, state] = [`${typers.length} kişi yazıyor…`, 'typing'];
+  }
   const el = $('peer-status');
   if (el.textContent !== text) el.textContent = text;
   el.dataset.s = state;
 }
 
-function paintIce(C) {
-  $('ice-q').textContent = ICE[C.ice % ICE.length];
+// Bir alıntı kutusunu doldurur: kimin mesajı, ne yazıyordu. Metin karşıdan değil kendi kaydımızdan gelir;
+// böylece kimse söylemediğin bir şeyi sana söyletemez.
+function fillQuote(C, box, key) {
+  const who = whoOf(C, key.slice(0, key.lastIndexOf(':')));
+  const rec = C.log.get(key);
+  box.style.borderLeftColor = who.hex;
+  box.querySelector('b').textContent = who.mine ? 'Sen' : who.name;
+  box.querySelector('span').textContent = rec ? rec.text : 'Mesaj';
 }
 
-function addMsg(kind, text) {
+// kind: 'me' | 'them' | 'sys'. from: { id, n, quoteKey } (sistem satırında yok)
+function addMsg(kind, text, from) {
   const list = $('msgs');
+  const C = S.chat;
   const li = document.createElement('li');
   li.className = 'msg ' + kind;
-  li.textContent = text; // yabancıdan gelen metin asla HTML olarak işlenmez
-  const C = S.chat;
+  if (C && from) {
+    const who = whoOf(C, from.id);
+    li.style.setProperty('--c', who.hex);
+    if (C.kind === 'room' && kind === 'them' && C.lastAuthor !== from.id) {
+      const by = document.createElement('b'); // odada gönderen değişince adı yazılır
+      by.className = 'by';
+      by.textContent = who.name;
+      li.append(by);
+    }
+    if (from.quoteKey) {
+      const q = document.createElement('button');
+      q.type = 'button';
+      q.className = 'quote';
+      q.dataset.q = from.quoteKey;
+      q.append(document.createElement('b'), document.createElement('span'));
+      fillQuote(C, q, from.quoteKey);
+      li.append(q);
+    }
+    const key = `${from.id}:${from.n}`;
+    li.dataset.k = key;
+    C.log.set(key, { text, el: li });
+  }
+  if (C) C.lastAuthor = from ? from.id : '';
+  const body = document.createElement('span');
+  body.textContent = text; // yabancıdan gelen metin asla HTML olarak işlenmez
+  li.append(body);
   list.insertBefore(li, C && C.typingEl && C.typingEl.isConnected ? C.typingEl : null); // "yazıyor" balonu hep en altta
-  const live = list.querySelectorAll('.msg:not(.fly):not(.typing)');
-  for (let i = 0; i < live.length - MAX_VISIBLE; i++) fly(live[i]);
+  while (list.children.length > MAX_MSGS) {
+    const old = list.firstElementChild;
+    if (C && old.dataset.k) C.log.delete(old.dataset.k);
+    old.remove();
+  }
+  if (C) paintSeen(C);
   list.scrollTop = list.scrollHeight;
 }
 
-function fly(node) {
-  node.classList.add('fly');
-  const rm = () => node.remove();
-  node.addEventListener('animationend', rm, { once: true });
-  setTimeout(rm, 1000);
+// ---------- okundu bilgisi ----------
+// Son mesaj benimse ve karşı taraf gördüyse altında "Görüldü" yazar (odada kaç kişinin gördüğü).
+function paintSeen(C) {
+  const all = $('msgs').querySelectorAll('.msg.me, .msg.them:not(.typing)');
+  const last = all[all.length - 1];
+  let label = '';
+  if (last && last.classList.contains('me')) {
+    const key = last.dataset.k;
+    const n = Number(key.slice(key.lastIndexOf(':') + 1));
+    let count = 0;
+    for (const seen of C.seenBy.values()) if (seen >= n) count++;
+    if (count) label = C.kind === 'duo' ? 'Görüldü' : `${count} kişi gördü`;
+  }
+  if (!label) {
+    if (C.seenEl) C.seenEl.remove();
+    C.seenEl = null;
+    return;
+  }
+  if (!C.seenEl) {
+    C.seenEl = document.createElement('li');
+    C.seenEl.className = 'seen';
+  }
+  C.seenEl.textContent = label;
+  if (last.nextElementSibling !== C.seenEl) last.after(C.seenEl);
 }
 
-// Karşı taraf yazarken mesajların altında üç noktalı balon görünür.
-function setTyping(C, on) {
-  if (on && !C.typingEl) {
+// Ekrana düşen mesajlar için "gördüm" bilgisini yollar. Sekme arka plandayken gitmez:
+// görmediğin mesaja "Görüldü" denmez; dönünce gider.
+function flushAcks(C) {
+  if (!C.toAck.size || document.hidden) return;
+  const s = Object.fromEntries(C.toAck);
+  C.toAck.clear();
+  enqueue(C, { t: 'r', s }, false);
+}
+
+// Biri yazarken mesajların altında, onun renginde üç noktalı balon görünür.
+function setTyping(C, who) {
+  if (who && !C.typingEl) {
     const li = document.createElement('li');
     li.className = 'msg them typing';
     li.setAttribute('aria-label', 'yazıyor');
@@ -416,21 +515,85 @@ function setTyping(C, on) {
     $('msgs').append(li);
     C.typingEl = li;
     $('msgs').scrollTop = $('msgs').scrollHeight;
-  } else if (!on && C.typingEl) {
+  } else if (!who && C.typingEl) {
     C.typingEl.remove();
     C.typingEl = null;
   }
+  if (who && C.typingEl) C.typingEl.style.setProperty('--c', who.hex);
 }
 
-// Şifreleyip gönderim kuyruğuna koyar. Tür: m mesaj, t yazıyor, i buz kırıcı, g oyun hamlesi.
+// ---------- sohbete özel ad ----------
+// Herkes rengiyle başlar; isteyen o sohbet için kendine bir ad yazar. Yeni sohbette yine renk gelir.
+const RESERVED = new Set(['sen', 'oda', 'biri', ...COLORS.map((c) => c.name.toLocaleLowerCase('tr'))]);
+
+// Geçerli adı döner; boş, küfürlü ya da başkasıyla karışacak adlar için '' (renk kalır).
+function tidyNick(raw) {
+  const s = clean(String(raw == null ? '' : raw).replace(/\s+/g, ' ').trim().slice(0, 16));
+  return !s || s.includes('*') || RESERVED.has(s.toLocaleLowerCase('tr')) ? '' : s;
+}
+
+// Ekrandaki eski mesaj ve alıntılarda adı günceller.
+function relabel(C, id) {
+  const name = whoOf(C, id).name;
+  for (const li of $('msgs').querySelectorAll('.msg[data-k]')) {
+    const key = li.dataset.k;
+    const by = li.querySelector('.by');
+    if (by && key.slice(0, key.lastIndexOf(':')) === id) by.textContent = name;
+  }
+  for (const q of $('msgs').querySelectorAll('.quote[data-q]')) fillQuote(C, q, q.dataset.q);
+  if (C.reply) fillQuote(C, $('reply-quote'), C.reply);
+}
+
+function setNick(C, id, raw) {
+  const p = C.people.get(id);
+  if (!p) return;
+  const nick = tidyNick(raw);
+  if ((p.nick || '') === nick) return;
+  const old = p.nick || p.name;
+  p.nick = nick;
+  addMsg('sys', nick ? `${old} artık ${nick}` : `${old} yeniden ${p.name}`);
+  relabel(C, id);
+}
+
+function setMyNick(C, raw) {
+  if (!alive(C)) return;
+  C.nick = tidyNick(raw);
+  $('me-name').textContent = C.nick || C.me.name;
+  enqueue(C, { t: 'n', x: C.nick }, true);
+}
+
+// ---------- mesaj yanıtlama ----------
+function setReply(C, key) {
+  C.reply = key && C.log.has(key) ? key : null;
+  $('reply-bar').hidden = !C.reply;
+  if (C.reply) {
+    fillQuote(C, $('reply-quote'), C.reply);
+    $('input').focus({ preventScroll: true });
+  }
+  fit();
+}
+
+// Alıntıya dokununca asıl mesaja gider ve kısaca vurgular.
+function jumpTo(C, key) {
+  const rec = C.log.get(key);
+  if (!rec || !rec.el.isConnected) return;
+  rec.el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  rec.el.classList.remove('flash');
+  void rec.el.offsetWidth; // animasyonu yeniden başlat
+  rec.el.classList.add('flash');
+}
+
+// Şifreleyip gönderim kuyruğuna koyar ve mesajın sıra numarasını döner.
+// Tür: m mesaj, t yazıyor, r gördüm, g oyun hamlesi.
 function enqueue(C, obj, urgent) {
+  const n = ++C.seq;
   C.q = C.q
     .then(async () => {
-      const n = ++C.seq;
-      C.out.push(await C.sess.seal({ ...obj, n }));
+      C.out.push(await C.seal({ ...obj, n }));
       if (urgent && C.wake) C.wake();
     })
     .catch(() => {});
+  return n;
 }
 
 function nap(C, ms) {
@@ -453,35 +616,108 @@ function syncDelay(C) {
   return idle < 12000 ? 1000 : idle < 60000 ? 1800 : 3000;
 }
 
-async function onEntry(C, e) {
-  C.peerSeen = Date.now();
-  if (e === 'p') return;
-  if (e === 'x') {
-    C.peerLeft = true;
-    return;
-  }
-  if (e[0] !== 'm') return;
-  const msg = await C.sess.open(e.slice(1));
-  if (!msg || !Number.isInteger(msg.n) || msg.n <= C.peerMax) return; // açılamadı ya da yinelenen
-  C.peerMax = msg.n;
+// Şifresi çözülmüş bir kaydı işler. id: gönderenin kimliği.
+async function onPayload(C, id, msg) {
+  if (!msg || !Number.isInteger(msg.n) || msg.n <= (C.last.get(id) || 0)) return; // açılamadı ya da yinelenen
+  C.last.set(id, msg.n);
   C.lastAct = Date.now();
   if (msg.t === 'm' && typeof msg.x === 'string') {
     C.recv++;
-    C.typingUntil = 0;
-    setTyping(C, false);
-    addMsg('them', msg.x.slice(0, 2000));
+    C.typers.delete(id);
+    const r = msg.r;
+    const ok = r && typeof r.w === 'string' && /^[A-Za-z0-9_-]{1,16}$/.test(r.w) && Number.isInteger(r.n);
+    C.toAck.set(id, msg.n);
+    addMsg('them', clean(msg.x.slice(0, 2000)), { id, n: msg.n, quoteKey: ok ? `${r.w}:${r.n}` : null });
   } else if (msg.t === 't') {
-    C.typingUntil = Date.now() + TYPING_MS;
-  } else if (msg.t === 'i' && Number.isInteger(msg.i)) {
-    C.ice = Math.abs(msg.i) % ICE.length;
-    paintIce(C);
-  } else if (msg.t === 'g') {
+    C.typers.set(id, Date.now() + TYPING_MS);
+  } else if (msg.t === 'r' && msg.s && typeof msg.s === 'object') {
+    const seen = msg.s[C.meId]; // benim mesajlarımdan hangisine kadar gördü
+    if (Number.isInteger(seen) && seen > (C.seenBy.get(id) || 0)) C.seenBy.set(id, seen);
+    paintSeen(C);
+  } else if (msg.t === 'n') {
+    setNick(C, id, msg.x);
+  } else if (msg.t === 'g' && C.game) {
     await C.game.onMsg(msg.g);
   }
   paintChat(C);
 }
 
-async function chatLoop(C) {
+const REASONS = {
+  me: 'Sohbeti bitirdin',
+  peer: 'Karşı taraf ayrıldı',
+  timeout: 'Karşı tarafın bağlantısı koptu',
+  net: 'Bağlantın koptu',
+  report: 'Bildirildi',
+  expired: 'Sohbet süresi doldu',
+  left: 'Odadan çıktın',
+  gone: 'Odadan düştün',
+};
+
+function endChat(reason) {
+  const C = S.chat;
+  if (!C || C.over) return;
+  C.over = true;
+  S.chat = null;
+  S.run++;
+  clearInterval(C.tick);
+  if (C.wake) C.wake();
+  api('leave', { tok: C.tok }).catch(() => {});
+
+  const secs = Math.max(1, Math.round((Date.now() - C.t0) / 1000));
+  const n = C.sent + C.recv;
+  $('msgs').replaceChildren(); // ekrandaki her şey gider; anahtarlar da C ile birlikte bellekten düşer
+  C.log.clear();
+  $('input').value = '';
+  $('input').blur();
+  $('reply-bar').hidden = true;
+  $('end-title').textContent = REASONS[reason] || 'Sohbet bitti';
+  $('end-stats').textContent = `${human(secs)} · ${n} mesaj · hepsi silindi`;
+  $('btn-again').textContent = S.door ? 'Odaya dön' : 'Yeni sohbet';
+  $('btn-share').href = xIntent(
+    n > 0
+      ? `${C.kind === 'room' ? 'Anonim bir odada' : 'Bir yabancıyla'} ${human(secs)} konuştum. Mesajlardan iz kalmadı.\n${location.origin}`
+      : `Anonim sohbet, iz bırakmaz:\n${location.origin}`,
+  );
+  show('end');
+}
+
+// ---------- 1'e 1 sohbet ----------
+async function startDuo(my, keys, m) {
+  let sess;
+  try {
+    sess = await openSession({ priv: keys.priv, myPub: keys.pub, peerPub: m.peerPub, slot: m.slot, room: m.room });
+  } catch {
+    sess = null;
+  }
+  if (!sess || my !== S.run) {
+    api('leave', { tok: m.tok }).catch(() => {});
+    if (my === S.run) startSearch('Eşleşme tutmadı, yeniden arıyorum…');
+    return;
+  }
+
+  const cols = colorsOf(sess.seed); // iki tarafın rengi; asla aynı çıkmaz
+  const C = newChat('duo', m.tok);
+  C.sess = sess;
+  C.seal = (obj) => sess.seal(obj);
+  C.meId = m.slot;
+  C.peerId = m.slot === 'a' ? 'b' : 'a';
+  C.me = m.slot === 'a' ? cols.a : cols.b;
+  C.people.set(C.peerId, { ...(m.slot === 'a' ? cols.b : cols.a), nick: '' });
+  C.code = codeOf(sess.seed);
+  C.waitFrom = C.t0;
+  C.peerSeen = 0;
+  C.peerLeft = false;
+  C.game = new Rps(
+    (g) => enqueue(C, { t: 'g', g }, true),
+    (ev) => onGame(C, ev),
+  );
+  $('btn-code').dataset.code = C.code;
+  openChatView(C, 'Mesajlar uçtan uca şifreli.');
+  paintGame(C);
+  duoLoop(C);
+}
+
+async function duoLoop(C) {
   while (alive(C)) {
     const batch = C.out.splice(0, 10);
     const t = Date.now();
@@ -509,7 +745,11 @@ async function chatLoop(C) {
     C.fails = 0;
     if (ping || batch.length) C.lastPing = t; // giden her kayıt karşı taraf için hayat işaretidir
     C.cur = res.cur;
-    for (const e of res.in) await onEntry(C, e);
+    for (const e of res.in) {
+      C.peerSeen = Date.now();
+      if (e === 'x') C.peerLeft = true;
+      else if (e[0] === 'm') await onPayload(C, C.peerId, await C.sess.open(e.slice(1)));
+    }
     if (!alive(C)) return;
     if (C.peerLeft) return endChat('peer');
 
@@ -519,6 +759,7 @@ async function chatLoop(C) {
     } else if (now - C.peerSeen > DEAD_MS) {
       return endChat('timeout');
     }
+    flushAcks(C);
     paintChat(C);
     await nap(C, syncDelay(C));
   }
@@ -532,41 +773,6 @@ function rematch(C) {
   startSearch('Eşleşme tutmadı, yeniden arıyorum…');
 }
 
-const REASONS = {
-  me: 'Sohbeti bitirdin',
-  peer: 'Karşı taraf ayrıldı',
-  timeout: 'Karşı tarafın bağlantısı koptu',
-  net: 'Bağlantın koptu',
-  report: 'Bildirildi',
-  expired: 'Sohbet süresi doldu',
-};
-
-function endChat(reason) {
-  const C = S.chat;
-  if (!C || C.over) return;
-  C.over = true;
-  S.chat = null;
-  S.run++;
-  clearInterval(C.tick);
-  if (C.wake) C.wake();
-  api('leave', { tok: C.tok }).catch(() => {});
-
-  const secs = Math.max(1, Math.round((Date.now() - C.t0) / 1000));
-  const n = C.sent + C.recv;
-  $('msgs').replaceChildren(); // ekrandaki her şey gider; anahtarlar da C ile birlikte bellekten düşer
-  $('input').value = '';
-  $('input').blur();
-  setTray(false);
-  $('end-title').textContent = REASONS[reason] || 'Sohbet bitti';
-  $('end-stats').textContent = `${human(secs)} · ${n} mesaj`;
-  $('btn-share').href = xIntent(
-    n > 0
-      ? `Bir yabancıyla ${human(secs)} anonim konuştum. Mesajlardan iz kalmadı.\n${location.origin}`
-      : `Anonim sohbet, iz bırakmaz:\n${location.origin}`,
-  );
-  show('end');
-}
-
 async function report(C, hours) {
   try {
     await api('report', { tok: C.tok, ...(hours ? { adm: S.admin, hours } : {}) });
@@ -576,96 +782,205 @@ async function report(C, hours) {
   endChat('report');
 }
 
-// ---------- taş kağıt makas ----------
-const RESULT = { 1: 'Kazandın', 0: 'Berabere', '-1': 'Kaybettin' };
-
-function setTray(open) {
-  $('rps').hidden = !open;
-  $('btn-game').setAttribute('aria-expanded', String(open));
-  if (!open) $('btn-game').classList.remove('ping');
+// ---------- oda sohbeti ----------
+function addPerson(C, id, c, announce) {
+  const known = C.people.get(id);
+  if (id === C.meId || (known && !known.gone)) return;
+  const col = COLORS[c] || UNKNOWN;
+  C.people.set(id, { name: col.name, hex: col.hex, c, gone: false, nick: '' });
+  if (announce) {
+    addMsg('sys', `${col.name} katıldı`);
+    if (C.nick) enqueue(C, { t: 'n', x: C.nick }, false); // yeni gelen geçmişi görmez: adımı yeniden duyur
+  }
 }
+
+function dropPerson(C, id) {
+  const p = C.people.get(id);
+  if (!p || p.gone) return;
+  p.gone = true; // adı ve rengi eski mesajlarda kalsın diye kayıt silinmez
+  C.typers.delete(id);
+  addMsg('sys', `${p.nick || p.name} ayrıldı`);
+}
+
+async function startRoom() {
+  if (!cryptoOk || !$('age').checked || !S.door) return goHome();
+  const my = ++S.run;
+  S.tk = null;
+  $('search-title').textContent = 'Odaya giriliyor';
+  $('search-sub').textContent = '';
+  $('btn-lonely-door').hidden = true;
+  show('search');
+
+  let crypt = null;
+  let res = null;
+  try {
+    crypt = await openRoom(S.door.secret);
+    res = await api('rjoin', { cid, room: S.door.id });
+  } catch {
+    /* aşağıda ele alınır */
+  }
+  if (my !== S.run) {
+    if (res && res.ok) api('leave', { tok: res.tok }).catch(() => {});
+    return;
+  }
+  if (!res || !crypt) return showNote('Bağlantı kurulamadı', 'İnternetini kontrol edip yeniden dene.');
+  if (!res.ok) {
+    if (!refused(res)) showNote('Bir şey ters gitti', 'Sayfayı yenileyip yeniden dene.');
+    return;
+  }
+
+  const C = newChat('room', res.tok);
+  C.seal = (obj) => crypt.seal(obj, res.me);
+  C.crypt = crypt;
+  C.meId = res.me;
+  C.myColor = res.color;
+  C.me = COLORS[res.color] || UNKNOWN;
+  C.cur = res.cur;
+  for (const m of res.members) addPerson(C, m.m, m.c, false);
+  $('btn-copy').textContent = 'Kopyala';
+  $('btn-share-door').href = xIntent(`Anonim odaya gel:\n${doorUrl()}`);
+  openChatView(C, present(C).length ? 'Mesajlar uçtan uca şifreli.' : 'Odada şimdilik yalnızsın. Linki paylaş.');
+  roomLoop(C);
+}
+
+async function roomLoop(C) {
+  while (alive(C)) {
+    const batch = C.out.splice(0, 10);
+    const t = Date.now();
+    const ping = t - C.lastPing >= PING_MS;
+    const beat = hb();
+    let res = null;
+    try {
+      res = await api('rsync', { tok: C.tok, cur: C.cur, out: batch, ping: ping ? 1 : 0, ...(beat ? { hb: 1, cid } : {}) });
+    } catch {
+      /* ağ hatası */
+    }
+    if (!alive(C)) return;
+
+    if (!res || !res.ok) {
+      C.out.unshift(...batch);
+      if (res && res.err === 'gone') return endChat('gone'); // uzun süre sessiz kalınca renk başkasına geçmiş
+      if (res && res.err === 'expired') return endChat('expired');
+      C.fails++;
+      paintChat(C);
+      if (C.fails >= 12) return endChat('net');
+      await nap(C, Math.min(1000 * C.fails, 4000));
+      continue;
+    }
+
+    C.fails = 0;
+    if (ping) C.lastPing = t;
+    C.cur = res.cur;
+    if (res.members) {
+      // Sunucunun listesi esastır: listede olmayan sessizce gitmiştir.
+      const ids = new Set(res.members.map((m) => m.m));
+      for (const [id, p] of C.people) if (!p.gone && !ids.has(id)) dropPerson(C, id);
+      for (const m of res.members) addPerson(C, m.m, m.c, true);
+    }
+    for (const e of res.in) {
+      const d = String(e.d);
+      const sep = d.indexOf('|');
+      const id = sep < 0 ? d.slice(1) : d.slice(1, sep);
+      if (d[0] === 'j') addPerson(C, id, Number(d.slice(sep + 1)), true);
+      else if (d[0] === 'x') dropPerson(C, id);
+      else if (d[0] === 'm' && id !== C.meId) await onPayload(C, id, await C.crypt.open(d.slice(sep + 1), id));
+    }
+    if (!alive(C)) return;
+    paintStrip(C);
+    flushAcks(C);
+    paintChat(C);
+    await nap(C, syncDelay(C));
+  }
+}
+
+// ---------- taş kağıt makas (yalnızca 1'e 1) ----------
+// Düğmeye basan rastgele atar. Atış kilitlenir; iki taraf da basınca aynı anda açılır.
+const RESULT = { 1: 'Kazandın', 0: 'Berabere', '-1': 'Kaybettin' };
 
 function paintGame(C) {
   const g = C.game;
-  const open = !$('rps').hidden;
-  let s = 'Taş, kağıt, makas';
-  if (g.mine && g.theirHash) s = 'Açılıyor…';
-  else if (g.mine) s = `${ICON[g.mine.move]} seçtin. ${C.peer} bekleniyor…`;
-  else if (g.theirHash) s = `${C.peer} seçti. Sıra sende.`;
-  else if (g.last && g.last.result !== null) {
-    s = `${ICON[g.last.mine]} ${ICON[g.last.theirs]} ${RESULT[g.last.result]} · ${g.score.me} – ${g.score.them}`;
-  }
-  $('rps-status').textContent = s;
-  for (const b of $('rps-picks').children) {
-    b.disabled = Boolean(g.mine);
-    b.classList.toggle('on', Boolean(g.mine) && b.dataset.move === g.mine.move);
-  }
-  // Karşı taraf seçip bekliyorsa ve panel kapalıysa düğmede nokta yanar.
-  $('btn-game').classList.toggle('ping', Boolean(g.theirHash) && !g.mine && !open);
+  const b = $('btn-game');
+  b.disabled = Boolean(g.mine); // attım, karşı tarafı bekliyorum
+  b.textContent = g.mine ? 'Bekleniyor…' : 'Taş kağıt makas';
+  b.classList.toggle('ping', Boolean(g.theirHash) && !g.mine); // karşı taraf attı, sıra bende
 }
 
 function onGame(C, ev) {
   if (!alive(C)) return;
   const g = C.game;
-  if (ev === 'invite') addMsg('sys', `${C.peer} taş kağıt makas oynuyor. Sıra sende.`);
+  const peer = whoOf(C, C.peerId).name;
+  if (ev === 'invite') addMsg('sys', `${peer} taş kağıt makas attı. Sıra sende.`);
   else if (ev === 'cheat') addMsg('sys', 'Geçersiz hamle. Tur iptal.');
   else if (ev === 'result') {
-    addMsg('sys', `Sen ${ICON[g.last.mine]} · ${ICON[g.last.theirs]} ${C.peer}: ${RESULT[g.last.result]}`);
+    const l = g.last;
+    addMsg('sys', `Sen ${NAME[l.mine]}, ${peer} ${NAME[l.theirs]}. ${RESULT[l.result]}. Skor ${g.score.me} – ${g.score.them}`);
   }
   paintGame(C);
 }
 
 // ---------- olaylar ----------
-$('age').addEventListener('change', renderHome);
-$('btn-find').onclick = () => startSearch();
-$('btn-door').onclick = createDoor;
-$('btn-lonely-door').onclick = () => {
-  const tk = S.tk;
-  if (tk) api('leave', { tk }).catch(() => {});
-  createDoor();
+// Koyu / açık görünüm: seçim yoksa cihazın ayarı geçerlidir; seçilince hatırlanır.
+$('btn-theme').onclick = () => {
+  const root = document.documentElement;
+  const dark = root.dataset.theme ? root.dataset.theme === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const next = dark ? 'light' : 'dark';
+  root.dataset.theme = next;
+  try {
+    localStorage.setItem('theme', next);
+  } catch {
+    /* depolama kapalıysa seçim yalnızca bu sekmede geçerli olur */
+  }
 };
+
+$('age').addEventListener('change', renderHome);
+$('btn-find').onclick = () => (S.door ? startRoom() : startSearch());
+$('btn-door').onclick = createRoom;
+$('btn-lonely-door').onclick = createRoom;
 $('btn-random').onclick = leaveDoor;
 $('btn-cancel').onclick = cancelSearch;
-$('btn-again').onclick = () => startSearch();
+$('btn-again').onclick = () => (S.door ? startRoom() : startSearch());
 $('btn-home').onclick = goHome;
 $('btn-note-home').onclick = goHome;
-$('btn-end').onclick = () => endChat('me');
+$('btn-end').onclick = () => endChat(S.chat && S.chat.kind === 'room' ? 'left' : 'me');
 
 $('btn-copy').onclick = async () => {
-  const inp = $('door-link');
   let ok = false;
   try {
-    await navigator.clipboard.writeText(inp.value);
+    await navigator.clipboard.writeText(doorUrl());
     ok = true;
   } catch {
-    inp.focus();
-    inp.select();
-    try {
-      ok = document.execCommand('copy');
-    } catch {
-      ok = false;
-    }
+    ok = false;
   }
-  $('btn-copy').textContent = ok ? 'Kopyalandı' : 'Seçip kopyala';
+  if (ok) $('btn-copy').textContent = 'Kopyalandı';
+  else openSheet('Oda linki', doorUrl(), [{ label: 'Tamam' }]); // pano kapalıysa linki göster, elle kopyalansın
 };
 
-$('btn-ice').onclick = () => {
+$('btn-nick').onclick = () => {
   const C = S.chat;
   if (!C) return;
-  C.ice = (C.ice + 1) % ICE.length;
-  paintIce(C);
-  enqueue(C, { t: 'i', i: C.ice }, true);
+  const actions = [{ label: 'Kaydet', kind: 'primary', fn: (v) => setMyNick(C, v) }];
+  if (C.nick) actions.push({ label: 'Rengime dön', fn: () => setMyNick(C, '') });
+  actions.push({ label: 'Vazgeç' });
+  openSheet('Adın', 'Yalnızca bu sohbette görünür. Boş bırakırsan rengin kalır.', actions, {
+    value: C.nick,
+    placeholder: C.me.name,
+    max: 16,
+  });
 };
+
+$('sheet-input').addEventListener('keydown', (ev) => {
+  if (ev.key === 'Enter') $('sheet-actions').firstElementChild.click(); // Enter ilk düğmeyle aynı
+});
 
 $('btn-code').onclick = () => {
   const C = S.chat;
-  if (!C) return;
+  if (!C || C.kind !== 'duo') return;
   openSheet('Güvenlik kodu', `${C.code}\n\nKarşı tarafta da aynıysa mesajları aranızda kimse okuyamaz.`, [{ label: 'Tamam' }]);
 };
 
 $('btn-report').onclick = () => {
   const C = S.chat;
-  if (!C) return;
+  if (!C || C.kind !== 'duo') return;
   const actions = [{ label: 'Bildir ve bitir', kind: 'danger', fn: () => report(C) }];
   if (S.admin) {
     actions.push(
@@ -677,34 +992,32 @@ $('btn-report').onclick = () => {
   openSheet('Bildir', 'Sohbet biter. Çok bildirilen ağ engellenir.', actions);
 };
 
-$('btn-game').onclick = () => {
+$('btn-game').onclick = async () => {
   const C = S.chat;
-  if (!C) return;
-  setTray($('rps').hidden);
-  paintGame(C);
-  fit();
-};
-
-$('rps-picks').addEventListener('click', (ev) => {
-  const b = ev.target.closest('button[data-move]');
-  const C = S.chat;
-  if (!b || !C) return;
+  if (!C || !C.game || C.game.mine) return;
   C.lastAct = Date.now();
-  C.game.pick(b.dataset.move === '?' ? randomMove() : b.dataset.move);
-});
+  const first = !C.game.theirHash;
+  const move = randomMove();
+  const done = await C.game.pick(move);
+  if (done && first && alive(C)) addMsg('sys', `${NAME[move]} attın. Karşı taraf bekleniyor.`);
+};
 
 $('composer').addEventListener('submit', (ev) => {
   ev.preventDefault();
   const C = S.chat;
   const inp = $('input');
-  const text = inp.value.trim();
+  const text = clean(inp.value.trim()); // küfür gönderilmeden yıldızlanır
   if (!C || !text) return;
   inp.value = '';
   C.sent++;
   C.lastAct = Date.now();
   C.lastTyping = 0; // sıradaki mesaja başlar başlamaz "yazıyor" yeniden gitsin
-  addMsg('me', text);
-  enqueue(C, { t: 'm', x: text }, true);
+  const quoteKey = C.reply;
+  const cut = quoteKey ? quoteKey.lastIndexOf(':') : -1;
+  const r = quoteKey ? { w: quoteKey.slice(0, cut), n: Number(quoteKey.slice(cut + 1)) } : null;
+  const n = enqueue(C, r ? { t: 'm', x: text, r } : { t: 'm', x: text }, true);
+  addMsg('me', text, { id: C.meId, n, quoteKey });
+  setReply(C, null);
   inp.focus();
 });
 
@@ -719,22 +1032,89 @@ $('input').addEventListener('input', () => {
   }
 });
 
+$('btn-reply-x').onclick = () => {
+  if (S.chat) setReply(S.chat, null);
+};
+
+// Mesaja dokunmak (ya da sağa kaydırmak) onu yanıtlar; alıntıya dokunmak asıl mesaja götürür.
+let swipe = null;
+let swiped = 0;
+
+$('msgs').addEventListener('click', (ev) => {
+  const C = S.chat;
+  if (!C || Date.now() - swiped < 400) return;
+  const q = ev.target.closest('.quote[data-q]');
+  if (q) return jumpTo(C, q.dataset.q);
+  const li = ev.target.closest('.msg[data-k]');
+  if (!li) return;
+  if (window.getSelection && String(window.getSelection())) return; // metin seçiliyorsa karışma
+  setReply(C, li.dataset.k);
+});
+
+$('msgs').addEventListener(
+  'touchstart',
+  (ev) => {
+    const li = ev.target.closest('.msg[data-k]');
+    swipe = li && ev.touches.length === 1 ? { li, x: ev.touches[0].clientX, y: ev.touches[0].clientY, dx: 0, on: false } : null;
+  },
+  { passive: true },
+);
+
+$('msgs').addEventListener(
+  'touchmove',
+  (ev) => {
+    if (!swipe) return;
+    const dx = ev.touches[0].clientX - swipe.x;
+    const dy = ev.touches[0].clientY - swipe.y;
+    if (!swipe.on) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) {
+        swipe = null; // dikey kaydırma: listeyi kaydırıyor
+        return;
+      }
+      if (dx < 12) return;
+      swipe.on = true;
+      swipe.li.style.transition = 'none';
+    }
+    swipe.dx = Math.max(0, Math.min(dx, 72));
+    swipe.li.style.transform = `translateX(${swipe.dx}px)`;
+  },
+  { passive: true },
+);
+
+function endSwipe() {
+  if (!swipe) return;
+  const { li, dx, on } = swipe;
+  swipe = null;
+  if (!on) return;
+  swiped = Date.now();
+  li.style.transition = 'transform 0.15s ease';
+  li.style.transform = '';
+  if (dx >= 48 && S.chat) setReply(S.chat, li.dataset.k);
+}
+$('msgs').addEventListener('touchend', endSwipe);
+$('msgs').addEventListener('touchcancel', endSwipe);
+
 $('sheet').addEventListener('click', (ev) => {
   if (ev.target === $('sheet')) closeSheet();
 });
 
 document.addEventListener('keydown', (ev) => {
-  if (ev.key === 'Escape') closeSheet();
+  if (ev.key !== 'Escape') return;
+  if (!$('sheet').hidden) closeSheet();
+  else if (S.chat && S.chat.reply) setReply(S.chat, null);
 });
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) return;
   const C = S.chat;
   if (C) {
-    // Sekme arka plandayken sayaçlar durur; dönünce karşı tarafa kendini göstermesi için pay bırak.
-    const t = Date.now();
-    if (C.peerSeen) C.peerSeen = Math.max(C.peerSeen, t - (DEAD_MS - NOSHOW_MS));
-    C.waitFrom = Math.max(C.waitFrom, t - NOSHOW_MS / 2);
+    if (C.kind === 'duo') {
+      // Sekme arka plandayken sayaçlar durur; dönünce karşı tarafa kendini göstermesi için pay bırak.
+      const t = Date.now();
+      if (C.peerSeen) C.peerSeen = Math.max(C.peerSeen, t - (DEAD_MS - NOSHOW_MS));
+      C.waitFrom = Math.max(C.waitFrom, t - NOSHOW_MS / 2);
+    }
+    flushAcks(C); // arka plandayken gelenleri şimdi gördüm
     if (C.wake) C.wake();
   } else if (S.view === 'home') {
     S.homePolls = 0;

@@ -32,6 +32,43 @@ export async function doorId(secret) {
   return toB64u(await sha256('door:' + secret)).slice(0, 22);
 }
 
+/**
+ * Oda sohbetinin anahtarı linkteki sırdan türetilir: linki bilen herkes okur, sunucu okuyamaz.
+ * Gönderenin üye kimliği şifreye bağlanır; sunucu bir mesajı başka üyeye mal edemez.
+ */
+export async function openRoom(secret) {
+  const subtle = crypto.subtle;
+  const ikm = await subtle.importKey('raw', te.encode('room/v1|' + secret), 'HKDF', false, ['deriveBits']);
+  const bits = await subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt: te.encode('room-salt'), info: te.encode('keys') }, ikm, 256);
+  const key = await subtle.importKey('raw', bits, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+  return {
+    async seal(obj, member) {
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const ct = new Uint8Array(
+        await subtle.encrypt({ name: 'AES-GCM', iv, additionalData: te.encode(member) }, key, te.encode(JSON.stringify(obj))),
+      );
+      const out = new Uint8Array(12 + ct.length);
+      out.set(iv);
+      out.set(ct, 12);
+      return toB64u(out);
+    },
+    async open(str, member) {
+      try {
+        const raw = fromB64u(str);
+        const pt = await subtle.decrypt(
+          { name: 'AES-GCM', iv: raw.subarray(0, 12), additionalData: te.encode(member) },
+          key,
+          raw.subarray(12),
+        );
+        const o = JSON.parse(td.decode(pt));
+        return o && typeof o === 'object' ? o : null;
+      } catch {
+        return null;
+      }
+    },
+  };
+}
+
 /** Sohbet başına tek kullanımlık anahtar çifti. */
 export async function newKeys() {
   const kp = await crypto.subtle.generateKey(ECDH, false, ['deriveBits']);
@@ -40,7 +77,7 @@ export async function newKeys() {
 
 /**
  * İki tarafın açık anahtarlarından ortak sohbet anahtarını türetir.
- * seed: iki tarafta da aynı çıkan rastgele baytlar (güvenlik kodu, takma adlar, buz kırıcı için).
+ * seed: iki tarafta da aynı çıkan rastgele baytlar (güvenlik kodu ve renkler için).
  */
 export async function openSession({ priv, myPub, peerPub, slot, room, doorSecret = '' }) {
   const subtle = crypto.subtle;
