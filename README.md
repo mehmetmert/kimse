@@ -11,13 +11,17 @@ Canlı adres: https://kimse.vercel.app
 - **Renkler ve ad:** Herkes bir renkle başlar; aynı sohbette iki kişi aynı rengi alamaz. Üstteki şerit o an sohbette olanların renklerini gösterir. İsteyen, başlıktaki "Sen" etiketine dokunup o sohbet için kendine bir ad yazar. Ad yalnızca o sohbette geçerlidir, yeni sohbette yine renk gelir. Küfürlü ya da renk adlarıyla karışacak adlar kabul edilmez.
 - **Koyu mod:** Üstteki ay/güneş düğmesi koyu ve açık görünüm arasında geçer. Seçim yapılmamışsa cihazın ayarı geçerlidir.
 - **Uçtan uca şifreleme:** Mesajlar tarayıcıda şifrelenir, sunucu içeriği okuyamaz. 1'e 1 sohbette "Güvenlik kodu" iki tarafta aynı çıkan altı haneli sayıyı gösterir.
-- **Mesaj menüsü:** Mesaja basılı tutunca (bilgisayarda tıklayınca ya da sağ tıklayınca) WhatsApp'taki gibi bir menü açılır: üstte emoji tepkileri, altında "Yanıtla" ve "Kopyala". Dokunmatikte kısa dokunuş bir şey yapmaz.
+- **Mesaj menüsü:** Mesaja basılı tutunca (bilgisayarda tıklayınca ya da sağ tıklayınca) WhatsApp'taki gibi bir menü açılır: üstte emoji tepkileri, altında "Yanıtla", "Kopyala" ve kendi mesajında "Geri al". Dokunmatikte kısa dokunuş bir şey yapmaz.
+- **Geri alma:** Kendi mesajını geri alırsın; iki tarafta da "Mesaj geri alındı" olur.
+- **Kaybolan mesaj:** Yazı alanının solundaki "10 sn" açıkken gönderilen mesaj, ekrana düştükten 10 saniye sonra iki taraftan da silinir. Karşı tarafın sekmesi arkadaysa süre o sekmeye dönünce başlar.
+- **Sekme arkadayken:** Gelen mesaj başlıkta sayılır ("(2) kimse") ve kısa bir ses çalar; eşleşince başlıkta "Biri bulundu" yazar.
+- **Otomatik yeni sohbet:** Sohbet sonu ekranındaki kutu işaretliyse, karşı taraf çıkınca 3 saniye sonra kendiliğinden yeni biri aranır.
 - **Emoji tepkisi:** Herkes bir mesaja tek tepki verir (👍 ❤️ 😂 😮 😢 🙏). Tepki mesajın altında görünür, iki kişi tepki verince sayı çıkar. Aynı tepkiye yeniden basmak geri alır.
 - **Yanıtlama:** Menüden "Yanıtla" ya da mesajı sağa kaydırmak. Alıntıya dokunmak asıl mesaja götürür.
 - **"Yazıyor" ve "Görüldü":** Karşı taraf yazarken üç noktalı balon çıkar. Son mesajın görülünce altında "Görüldü" (odada "2 kişi gördü") yazar.
 - **Küfür filtresi:** Küfürlü kelimeler gönderilmeden ve gösterilmeden önce yıldızlanır.
 - **Oyunlar (1'e 1 sohbette):** Alttaki "Oyunlar" düğmesinden açılır.
-  - *Taş kağıt makas* ve *Zar at:* Basan rastgele atar. Atış kilitlenir ve karşı taraf sohbette çıkan "Sen de at" düğmesine basınca ikisi aynı anda açılır; kimse diğerininkini önceden göremez. Zarda kimse kendi zarını seçemez, sonuç iki tarafın gizli sayısından birlikte çıkar.
+  - *Taş kağıt makas* ve *Zar at:* Taş kağıt makasta Taş, Kağıt, Makas ya da Rastgele seçilir; zarda basan rastgele atar. Atış kilitlenir ve karşı taraf sohbette çıkan düğmelerden seçince ikisi aynı anda açılır; kimse diğerininkini önceden göremez. Zarda kimse kendi zarını seçemez, sonuç iki tarafın gizli sayısından birlikte çıkar.
   - *XOX* ve *Dört bağla:* Biri çağırır, karşı tarafa "Oyna / Hayır" düğmeli bir satır düşer. Kabul edilince tahta yazı alanının üstünde açılır; çağıran başlar, sırayla oynanır. İşaretler ve taşlar oyuncuların renginde. Bitince "Rövanş" ya da "Kapat".
   - Karşı taraf attığında ya da çağırdığında "Oyunlar" düğmesinde nokta yanar. Skorlar sohbet boyunca tutulur.
 - **Bildirme ve engel:** Üç farklı ağdan bildirilen ağ otomatik ve geçici olarak engellenir (1 saat, tekrarında 6, 24, 72 saat). Yönetici anında engelleyebilir.
@@ -126,7 +130,7 @@ dev.mjs           yerel geliştirme sunucusu
 
 ## Yeni oyun eklemek
 
-Sohbet mesajları şifreli bir zarfın içinde tür etiketiyle gider: `m` mesaj, `t` yazıyor, `r` görüldü, `n` ad, `e` tepki, `g` taş kağıt makas, `d` zar, `b` tahta oyunu. Sunucu türleri ayırt edemez, yalnızca aktarır; yeni oyun için sunucuda değişiklik gerekmez.
+Sohbet mesajları şifreli bir zarfın içinde tür etiketiyle gider: `m` mesaj (`z` alanı varsa kaybolan), `u` geri alma, `t` yazıyor, `r` görüldü, `n` ad, `e` tepki, `g` taş kağıt makas, `d` zar, `b` tahta oyunu. Sunucu türleri ayırt edemez, yalnızca aktarır; yeni oyun için sunucuda değişiklik gerekmez.
 
 `public/games.js` örnek alınabilir: oyun mantığı DOM'dan bağımsız bir sınıftır, `send` ile hamle yollar, `onMsg` ile karşı hamleyi alır, `notify` ile arayüze haber verir. Gizli seçimli oyunlar `Dice` gibi "kilitle, sonra aç" ile; sıralı tahta oyunları `Match` ile yazılır. Yeni bir tahta oyunu için `BOARDS` listesine boyutu ve kazanma kuralı eklemek çoğu zaman yeter. `public/app.js` içinde `onPayload` gelen hamleyi oyuna iletir.
 

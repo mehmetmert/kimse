@@ -26,6 +26,47 @@ const cid = randId(12); // bu sekmenin geçici kimliği; yalnızca çevrimiçi s
 const cryptoOk = Boolean(window.crypto && crypto.subtle);
 
 const S = { view: 'home', run: 0, door: null, tk: null, chat: null, lastHb: 0, admin: '', homePolls: 0 };
+
+// Sekme arkadayken gelen mesaj: başlıkta sayı ve kısa bir ses. Ses için tarayıcı bir dokunuş ister.
+const TITLE = document.title;
+let unread = 0;
+let audio = null;
+
+function unlockAudio() {
+  try {
+    if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state === 'suspended') audio.resume();
+  } catch {
+    audio = null;
+  }
+}
+
+function beep() {
+  if (!audio || audio.state !== 'running') return;
+  try {
+    const t = audio.currentTime;
+    const o = audio.createOscillator();
+    const g = audio.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(740, t);
+    o.frequency.setValueAtTime(988, t + 0.08);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.12, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+    o.connect(g).connect(audio.destination);
+    o.start(t);
+    o.stop(t + 0.22);
+  } catch {
+    /* ses çalınamazsa sessiz geç */
+  }
+}
+
+function alertTab(label) {
+  if (!document.hidden) return;
+  if (label) document.title = `${label} · ${TITLE}`;
+  else document.title = `(${++unread}) ${TITLE}`;
+  beep();
+}
 try {
   S.admin = sessionStorage.getItem('adm') || ''; // yalnızca yönetici, /admin sayfasından açarsa
 } catch {
@@ -334,6 +375,8 @@ function newChat(kind, tok) {
     log: new Map(), // "kimlik:sıra" → { text, el }: yanıtlanan mesajı bulmak için
     reacts: new Map(), // "kimlik:sıra" → Map(kimlik → emoji): kim hangi tepkiyi verdi
     menuKey: null, // menüsü açık olan mesaj
+    vanish: false, // kaybolan mesaj açık mı
+    vanishQ: [], // sekme arkadayken gelen kaybolan mesajlar: görünce sayaç başlar
     reply: null,
     lastAuthor: '',
     typers: new Map(), // kimlik → "yazıyor" bitiş zamanı
@@ -380,6 +423,7 @@ function openChatView(C, firstLine) {
   $('room-bar').hidden = !room;
   $('btn-end').textContent = room ? 'Çık' : 'Bitir';
   $('btn-games').hidden = room;
+  setVanish(C, false);
   $('game').hidden = true;
   $('btn-code').hidden = room;
   $('btn-report').hidden = room;
@@ -581,7 +625,8 @@ function setMyNick(C, raw) {
 // ---------- emoji tepkisi ----------
 // Herkes bir mesaja tek tepki verir; aynı tepkiye yeniden basmak geri alır. Tepki şifreli zarfla gider.
 function applyReact(C, key, id, e) {
-  if (!C.log.has(key)) return; // ekranda olmayan mesaja gelen tepki yok sayılır
+  const target = C.log.get(key);
+  if (!target || !target.el) return; // ekranda olmayan mesaja gelen tepki yok sayılır
   let map = C.reacts.get(key);
   if (!map) {
     map = new Map();
@@ -603,7 +648,7 @@ function react(C, key, e) {
 // Tepkiler balonun alt köşesinde küçük bir hap olarak görünür: "❤️😂 3".
 function paintReacts(C, key) {
   const rec = C.log.get(key);
-  if (!rec || !rec.el.isConnected) return;
+  if (!rec || !rec.el || !rec.el.isConnected) return;
   const map = C.reacts.get(key);
   let pill = rec.el.querySelector(':scope > .reacts');
   if (!map || !map.size) {
@@ -633,7 +678,7 @@ let menuAt = 0;
 
 function openMenu(C, li) {
   const key = li.dataset.k;
-  if (!C.log.has(key)) return;
+  if (!C.log.has(key) || li.classList.contains('gone') || li.classList.contains('fade')) return;
   closeMenu();
   C.menuKey = key;
   const map = C.reacts.get(key);
@@ -649,6 +694,7 @@ function openMenu(C, li) {
       return b;
     }),
   );
+  $('menu-unsend').hidden = !li.classList.contains('me'); // yalnızca kendi mesajını geri alabilirsin
   li.classList.add('picked');
   $('menu').hidden = false;
   menuAt = Date.now();
@@ -658,7 +704,7 @@ function openMenu(C, li) {
 // Menüyü mesajın üstüne, sığmazsa altına koyar; ekranın dışına taşırmaz.
 function placeMenu(C) {
   const rec = C && C.menuKey ? C.log.get(C.menuKey) : null;
-  if (!rec || !rec.el.isConnected) return closeMenu();
+  if (!rec || !rec.el || !rec.el.isConnected) return closeMenu();
   const panel = $('menu-panel');
   const r = rec.el.getBoundingClientRect();
   const vw = document.documentElement.clientWidth;
@@ -678,7 +724,7 @@ function closeMenu() {
   const C = S.chat;
   if (C && C.menuKey) {
     const rec = C.log.get(C.menuKey);
-    if (rec) rec.el.classList.remove('picked');
+    if (rec && rec.el) rec.el.classList.remove('picked');
     C.menuKey = null;
   }
   $('menu').hidden = true;
@@ -693,9 +739,64 @@ function toast(text) {
   toastTimer = setTimeout(() => (el.hidden = true), 1600);
 }
 
+// ---------- geri alma ve kaybolan mesaj ----------
+function refreshQuotes(C, key) {
+  for (const q of $('msgs').querySelectorAll('.quote[data-q]')) if (q.dataset.q === key) fillQuote(C, q, key);
+  if (C.reply === key) setReply(C, null);
+}
+
+// Mesaj iki tarafta da "Mesaj geri alındı" olur; tepkileri ve alıntısı kalkar.
+function unsend(C, key) {
+  const rec = C.log.get(key);
+  if (!rec || !rec.el) return;
+  if (C.menuKey === key) closeMenu();
+  const li = rec.el;
+  rec.text = 'Mesaj geri alındı';
+  li.classList.add('gone');
+  li.classList.remove('vanishing', 'has-r');
+  for (const el of li.querySelectorAll(':scope > .quote, :scope > .reacts')) el.remove();
+  li.lastElementChild.textContent = rec.text;
+  C.reacts.delete(key);
+  refreshQuotes(C, key);
+}
+
+// Kaybolan mesaj: gösterildikten belli süre sonra iki ekrandan da silinir. Sekme arkadaysa süre dönünce başlar.
+function vanishLater(C, key, secs) {
+  const rec = C.log.get(key);
+  if (rec && rec.el) rec.el.classList.add('vanishing');
+  if (document.hidden) C.vanishQ.push([key, secs]);
+  else setTimeout(() => vanish(C, key), secs * 1000);
+}
+
+function vanish(C, key) {
+  if (!alive(C)) return;
+  const rec = C.log.get(key);
+  if (!rec || !rec.el) return;
+  if (C.menuKey === key) closeMenu();
+  const li = rec.el;
+  C.log.set(key, { text: 'Kaybolan mesaj', el: null }); // alıntılarda bu yazı görünür
+  C.reacts.delete(key);
+  li.classList.add('fade');
+  const rm = () => {
+    if (!li.isConnected) return;
+    li.remove();
+    paintSeen(C);
+  };
+  li.addEventListener('animationend', rm, { once: true });
+  setTimeout(rm, 700);
+  refreshQuotes(C, key);
+}
+
+function setVanish(C, on) {
+  C.vanish = on;
+  $('btn-vanish').setAttribute('aria-pressed', String(on));
+  $('input').placeholder = on ? '10 sn sonra kaybolur' : 'Mesajını yaz';
+}
+
 // ---------- mesaj yanıtlama ----------
 function setReply(C, key) {
-  C.reply = key && C.log.has(key) ? key : null;
+  const rec = key ? C.log.get(key) : null;
+  C.reply = rec && rec.el ? key : null;
   $('reply-bar').hidden = !C.reply;
   if (C.reply) {
     fillQuote(C, $('reply-quote'), C.reply);
@@ -707,7 +808,7 @@ function setReply(C, key) {
 // Alıntıya dokununca asıl mesaja gider ve kısaca vurgular.
 function jumpTo(C, key) {
   const rec = C.log.get(key);
-  if (!rec || !rec.el.isConnected) return;
+  if (!rec || !rec.el || !rec.el.isConnected) return;
   rec.el.scrollIntoView({ block: 'center', behavior: 'smooth' });
   rec.el.classList.remove('flash');
   void rec.el.offsetWidth; // animasyonu yeniden başlat
@@ -759,6 +860,8 @@ async function onPayload(C, id, msg) {
     const ok = r && typeof r.w === 'string' && /^[A-Za-z0-9_-]{1,16}$/.test(r.w) && Number.isInteger(r.n);
     C.toAck.set(id, msg.n);
     addMsg('them', clean(msg.x.slice(0, 2000)), { id, n: msg.n, quoteKey: ok ? `${r.w}:${r.n}` : null });
+    if (Number.isInteger(msg.z) && msg.z >= 1 && msg.z <= 60) vanishLater(C, `${id}:${msg.n}`, msg.z);
+    alertTab();
   } else if (msg.t === 't') {
     C.typers.set(id, Date.now() + TYPING_MS);
   } else if (msg.t === 'r' && msg.s && typeof msg.s === 'object') {
@@ -767,6 +870,8 @@ async function onPayload(C, id, msg) {
     paintSeen(C);
   } else if (msg.t === 'n') {
     setNick(C, id, msg.x);
+  } else if (msg.t === 'u' && typeof msg.k === 'string' && KEY_RE.test(msg.k) && msg.k.slice(0, msg.k.lastIndexOf(':')) === id) {
+    unsend(C, msg.k); // yalnızca kendi mesajını geri alabilir
   } else if (msg.t === 'e' && typeof msg.k === 'string' && KEY_RE.test(msg.k) && (msg.e === '' || REACTIONS.includes(msg.e))) {
     applyReact(C, msg.k, id, msg.e);
   } else if (msg.t === 'g' && C.game) {
@@ -819,6 +924,35 @@ function endChat(reason) {
       : `Anonim sohbet, iz bırakmaz:\n${location.origin}`,
   );
   show('end');
+  $('end-auto').hidden = true;
+  $('auto-wrap').hidden = C.kind !== 'duo';
+  if (C.kind === 'duo' && $('auto').checked && (reason === 'peer' || reason === 'timeout')) autoAgain();
+}
+
+// Karşı taraf çıkınca 3 sn sonra yeniden arar; kutunun işaretini kaldırmak ya da ekrandan çıkmak durdurur.
+let autoTimer = 0;
+function autoAgain() {
+  clearInterval(autoTimer);
+  let left = 3;
+  const tick = () => {
+    const el = $('end-auto');
+    if (S.view !== 'end' || !$('auto').checked) {
+      clearInterval(autoTimer);
+      el.hidden = true;
+      return;
+    }
+    if (left === 0) {
+      clearInterval(autoTimer);
+      el.hidden = true;
+      startSearch();
+      return;
+    }
+    el.hidden = false;
+    el.textContent = `${left} sn içinde yeni sohbet`;
+    left--;
+  };
+  tick();
+  autoTimer = setInterval(tick, 1000);
 }
 
 // ---------- 1'e 1 sohbet ----------
@@ -856,6 +990,7 @@ async function startDuo(my, keys, m) {
   C.pend = { rps: null, dice: null, inv: null }; // karşı tarafın beklettiği düğmeli satırlar
   $('btn-code').dataset.code = C.code;
   openChatView(C, 'Mesajlar uçtan uca şifreli.');
+  alertTab('Biri bulundu');
   paintGames(C);
   duoLoop(C);
 }
@@ -1066,6 +1201,13 @@ function clearActions(li) {
   if (row) row.remove();
 }
 
+const rpsChoices = (C) => [
+  { label: 'Taş', fn: () => playRps(C, 't') },
+  { label: 'Kağıt', fn: () => playRps(C, 'k') },
+  { label: 'Makas', fn: () => playRps(C, 'm') },
+  { label: 'Rastgele', fn: () => playRps(C, '?') },
+];
+
 // "Oyunlar" düğmesinde nokta: karşı taraf attı ya da çağırdı, sıra bende.
 function paintGames(C) {
   const waiting = (C.game.theirHash && !C.game.mine) || (C.dice.theirHash && !C.dice.mine) || C.match.state === 'invited';
@@ -1073,11 +1215,12 @@ function paintGames(C) {
   paintMatch(C);
 }
 
-async function playRps(C) {
+// choice: 't' | 'k' | 'm' ya da '?' (rastgele)
+async function playRps(C, choice) {
   if (!alive(C) || C.game.mine) return;
   C.lastAct = Date.now();
   const first = !C.game.theirHash;
-  const move = randomMove();
+  const move = choice && choice !== '?' ? choice : randomMove();
   clearActions(C.pend.rps);
   C.pend.rps = null;
   const ok = await C.game.pick(move);
@@ -1090,7 +1233,7 @@ function onGame(C, ev) {
   const g = C.game;
   const peer = whoOf(C, C.peerId).name;
   if (ev === 'invite') {
-    C.pend.rps = addAction(C, `${peer} taş kağıt makas attı.`, [{ label: 'Sen de at', kind: 'primary', fn: () => playRps(C) }]);
+    C.pend.rps = addAction(C, `${peer} taş kağıt makas attı.`, rpsChoices(C));
   } else if (ev === 'cheat' || ev === 'result') {
     clearActions(C.pend.rps);
     C.pend.rps = null;
@@ -1328,7 +1471,7 @@ $('btn-games').onclick = () => {
   if (!C || C.kind !== 'duo') return;
   const busy = C.match.state === 'inviting' || C.match.state === 'playing';
   openSheet('Oyunlar', '', [
-    { label: C.game.mine ? 'Taş kağıt makas · bekleniyor' : 'Taş kağıt makas', disabled: Boolean(C.game.mine), fn: () => playRps(C) },
+    { label: C.game.mine ? 'Taş kağıt makas · bekleniyor' : 'Taş kağıt makas', disabled: Boolean(C.game.mine), fn: () => openSheet('Taş kağıt makas', '', [...rpsChoices(C), { label: 'Vazgeç', kind: 'text' }]) },
     { label: C.dice.mine ? 'Zar at · bekleniyor' : 'Zar at', disabled: Boolean(C.dice.mine), fn: () => playDice(C) },
     { label: 'XOX', disabled: busy, fn: () => chooseBoard(C, 'xox') },
     { label: 'Dört bağla', disabled: busy, fn: () => chooseBoard(C, 'c4') },
@@ -1379,8 +1522,12 @@ $('composer').addEventListener('submit', (ev) => {
   const quoteKey = C.reply;
   const cut = quoteKey ? quoteKey.lastIndexOf(':') : -1;
   const r = quoteKey ? { w: quoteKey.slice(0, cut), n: Number(quoteKey.slice(cut + 1)) } : null;
-  const n = enqueue(C, r ? { t: 'm', x: text, r } : { t: 'm', x: text }, true);
+  const payload = { t: 'm', x: text };
+  if (r) payload.r = r;
+  if (C.vanish) payload.z = 10;
+  const n = enqueue(C, payload, true);
   addMsg('me', text, { id: C.meId, n, quoteKey });
+  if (C.vanish) vanishLater(C, `${C.meId}:${n}`, 10);
   setReply(C, null);
   inp.focus();
 });
@@ -1509,6 +1656,25 @@ $('menu-reply').onclick = () => {
   setReply(C, key);
 };
 
+$('menu-unsend').onclick = () => {
+  const C = S.chat;
+  if (!C || !C.menuKey) return;
+  const key = C.menuKey;
+  closeMenu();
+  unsend(C, key);
+  enqueue(C, { t: 'u', k: key }, true);
+};
+
+$('btn-vanish').onclick = () => {
+  const C = S.chat;
+  if (!C) return;
+  setVanish(C, !C.vanish);
+  $('input').focus({ preventScroll: true });
+};
+
+document.addEventListener('pointerdown', unlockAudio, { passive: true });
+document.addEventListener('keydown', unlockAudio);
+
 $('menu-copy').onclick = async () => {
   const C = S.chat;
   const rec = C && C.menuKey ? C.log.get(C.menuKey) : null;
@@ -1535,8 +1701,11 @@ document.addEventListener('keydown', (ev) => {
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) return;
+  unread = 0;
+  document.title = TITLE;
   const C = S.chat;
   if (C) {
+    for (const [k, secs] of C.vanishQ.splice(0)) setTimeout(() => vanish(C, k), secs * 1000);
     if (C.kind === 'duo') {
       // Sekme arka plandayken sayaçlar durur; dönünce karşı tarafa kendini göstermesi için pay bırak.
       const t = Date.now();

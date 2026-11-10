@@ -107,6 +107,7 @@
 
       <form id="composer" class="composer" autocomplete="off">
         <div class="field">
+          <button id="btn-vanish" class="vanish" type="button" aria-pressed="false" aria-label="Kaybolan mesaj: 10 saniye sonra iki taraftan da silinir">10 sn</button>
           <input id="input" type="text" maxlength="500" placeholder="Mesajını yaz" enterkeyhint="send" autocomplete="off" aria-label="Mesaj">
           <button class="send" type="submit">Gönder</button>
         </div>
@@ -124,8 +125,13 @@
       <div class="col">
         <h2 id="end-title" class="title"></h2>
         <p id="end-stats" class="sub num"></p>
+        <p id="end-auto" class="sub num" aria-live="polite" hidden></p>
         <button id="btn-again" class="btn primary" type="button">Yeni sohbet</button>
         <a id="btn-share" class="btn ghost" target="_blank" rel="noopener noreferrer">X'te paylaş</a>
+        <label id="auto-wrap" class="check">
+          <input id="auto" type="checkbox">
+          <span>Karşı taraf çıkınca otomatik yeni sohbet</span>
+        </label>
         <button id="btn-home" class="btn text" type="button">Ana sayfa</button>
       </div>
     </section>
@@ -157,6 +163,7 @@
       <div id="menu-reacts" class="menu-reacts"></div>
       <button id="menu-reply" class="menu-item" type="button" role="menuitem">Yanıtla</button>
       <button id="menu-copy" class="menu-item" type="button" role="menuitem">Kopyala</button>
+      <button id="menu-unsend" class="menu-item danger" type="button" role="menuitem">Geri al</button>
     </div>
   </div>
 

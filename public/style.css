@@ -1006,6 +1006,7 @@ select:focus-visible {
 /* Sohbetteki düğmeli satır: "Sen de at", "Oyna / Hayır" */
 .acts-inline {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   gap: 8px;
   margin-top: 6px;
@@ -1127,6 +1128,65 @@ select:focus-visible {
   justify-content: center;
   gap: 8px;
   padding-bottom: 4px;
+}
+
+/* Kaybolan mesaj düğmesi: yazı alanının solunda */
+.vanish {
+  flex-shrink: 0;
+  height: 40px;
+  min-width: 44px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: none;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.vanish[aria-pressed="true"] {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-ink);
+}
+
+.vanish:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Kaybolacak mesaj: kesik çizgili kenar; süresi dolunca söner */
+.msg.vanishing {
+  outline: 1.5px dashed var(--muted);
+  outline-offset: 2px;
+}
+
+.msg.fade {
+  animation: fade 0.5s ease-in forwards;
+  pointer-events: none;
+}
+
+@keyframes fade {
+  to {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+/* Geri alınan mesaj */
+.msg.gone {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.msg.gone > span:last-child {
+  font-size: 13.5px;
+}
+
+.menu-item.danger {
+  color: var(--danger);
 }
 
 /* --- Onay penceresi --- */
