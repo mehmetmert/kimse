@@ -16,6 +16,8 @@ const DEAD_MS = 45000; // bu kadar sessizse sohbet biter
 const NOSHOW_MS = 12000; // eşleşen kişi hiç görünmezse yeniden ara
 const TYPING_MS = 5500; // "yazıyor" balonunun ekranda kalma süresi
 const UNKNOWN = { name: 'Biri', hex: '#78818c' };
+const TAG_NAMES = { oyun: 'Oyun', muzik: 'Müzik', dert: 'Dertleşme', film: 'Dizi film', spor: 'Spor' };
+const TAG_WAIT_MS = 20000; // seçilen konuda bu kadar kimse çıkmazsa herkesle eşleş
 const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏']; // menüdeki tepkiler; başka bir şey kabul edilmez
 const KEY_RE = /^[A-Za-z0-9_-]{1,16}:\d{1,9}$/; // mesaj anahtarı: "kimlik:sıra"
 const LONG_MS = 450; // bu kadar basılı tutunca menü açılır
@@ -25,7 +27,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const cid = randId(12); // bu sekmenin geçici kimliği; yalnızca çevrimiçi sayacı ve kendinle eşleşmeyi önlemek için
 const cryptoOk = Boolean(window.crypto && crypto.subtle);
 
-const S = { view: 'home', run: 0, door: null, tk: null, chat: null, lastHb: 0, admin: '', homePolls: 0 };
+const S = { view: 'home', run: 0, door: null, tk: null, chat: null, lastHb: 0, admin: '', homePolls: 0, tag: '' };
 
 // Sekme arkadayken gelen mesaj: başlıkta sayı ve kısa bir ses. Ses için tarayıcı bir dokunuş ister.
 const TITLE = document.title;
@@ -196,6 +198,7 @@ function renderHome() {
   $('btn-door').disabled = !ready;
   $('btn-door').hidden = inRoom;
   $('btn-random').hidden = !inRoom;
+  $('tags-box').hidden = inRoom;
 }
 
 function homeErr(text) {
@@ -273,16 +276,19 @@ async function startSearch(notice = '') {
   if (!cryptoOk || !$('age').checked) return goHome();
   const my = ++S.run;
   S.tk = null;
-  $('search-title').textContent = 'Aranıyor';
+  let tag = S.tag; // konu seçildiyse önce o konuda arar
+  $('search-title').textContent = tag ? `Aranıyor · ${TAG_NAMES[tag]}` : 'Aranıyor';
   $('btn-lonely-door').hidden = true;
   show('search');
 
   const t0 = Date.now();
+  let note = notice;
+  let noteUntil = t0 + 4000;
   const paint = () => {
     const s = Math.floor((Date.now() - t0) / 1000);
     const lonely = s >= 40;
     $('btn-lonely-door').hidden = !lonely;
-    $('search-sub').textContent = notice && s < 4 ? notice : lonely ? `Şu an kimse yok · ${mmss(s)}` : mmss(s);
+    $('search-sub').textContent = note && Date.now() < noteUntil ? note : lonely ? `Şu an kimse yok · ${mmss(s)}` : mmss(s);
   };
   paint();
   const timer = setInterval(paint, 1000);
@@ -305,7 +311,7 @@ async function startSearch(notice = '') {
               keep: polls % 9 === 0 ? 1 : 0,
               hb: hb(),
             })
-          : await api('find', { cid, pub: keys.pub });
+          : await api('find', { cid, pub: keys.pub, tag });
       } catch {
         /* ağ hatası: aşağıda sayılır */
       }
@@ -333,7 +339,19 @@ async function startSearch(notice = '') {
       if (res.tk) S.tk = res.tk;
       if (res.matched) {
         S.tk = null;
-        return startDuo(my, keys, res.matched);
+        return startDuo(my, keys, res.matched, tag);
+      }
+      if (tag && Date.now() - t0 > TAG_WAIT_MS && S.tk) {
+        // Bu konuda kimse yok: sıradan çık, herkesle eşleş.
+        api('leave', { tk: S.tk }).catch(() => {});
+        S.tk = null;
+        tag = '';
+        misses = 0;
+        $('search-title').textContent = 'Aranıyor';
+        note = 'Bu konuda kimse yok, herkesle eşleşiyorsun';
+        noteUntil = Date.now() + 6000;
+        paint();
+        continue;
       }
       if (res.inSlot !== undefined) misses = res.inSlot ? 0 : misses + 1;
       polls++;
@@ -956,7 +974,7 @@ function autoAgain() {
 }
 
 // ---------- 1'e 1 sohbet ----------
-async function startDuo(my, keys, m) {
+async function startDuo(my, keys, m, topic) {
   let sess;
   try {
     sess = await openSession({ priv: keys.priv, myPub: keys.pub, peerPub: m.peerPub, slot: m.slot, room: m.room });
@@ -991,6 +1009,7 @@ async function startDuo(my, keys, m) {
   $('btn-code').dataset.code = C.code;
   openChatView(C, 'Mesajlar uçtan uca şifreli.');
   alertTab('Biri bulundu');
+  if (topic) addMsg('sys', `Ortak konu: ${TAG_NAMES[topic]}`);
   paintGames(C);
   duoLoop(C);
 }
@@ -1407,6 +1426,14 @@ $('btn-theme').onclick = () => {
 };
 
 $('age').addEventListener('change', renderHome);
+
+// Konu: birine dokun seçilsin, yeniden dokun kalksın.
+$('tags').addEventListener('click', (ev) => {
+  const b = ev.target.closest('button[data-tag]');
+  if (!b) return;
+  S.tag = S.tag === b.dataset.tag ? '' : b.dataset.tag;
+  for (const x of $('tags').children) x.setAttribute('aria-pressed', String(x.dataset.tag === S.tag));
+});
 $('btn-find').onclick = () => (S.door ? startRoom() : startSearch());
 $('btn-door').onclick = createRoom;
 $('btn-lonely-door').onclick = createRoom;

@@ -7,6 +7,7 @@ Canlı adres: https://kimse.vercel.app
 ## Neler var
 
 - **Rastgele eşleşme:** "Birini bul" ile o an bekleyen biriyle 1'e 1 eşleşirsin. Girişte tek koşul "18 yaşından büyüğüm" kutusudur.
+- **Konu (isteğe bağlı):** Oyun, Müzik, Dertleşme, Dizi film ya da Spor seçersen önce aynı konuyu seçenlerle eşleşirsin; sohbette "Ortak konu" yazar. O konuda 20 saniye içinde kimse çıkmazsa arama kendiliğinden herkese açılır.
 - **Oda sohbeti:** "Oda oluştur" bir link üretir. Linki açan herkes aynı odaya girer; bir odada en fazla 12 kişi olur.
 - **Renkler ve ad:** Herkes bir renkle başlar; aynı sohbette iki kişi aynı rengi alamaz. Üstteki şerit o an sohbette olanların renklerini gösterir. İsteyen, başlıktaki "Sen" etiketine dokunup o sohbet için kendine bir ad yazar. Ad yalnızca o sohbette geçerlidir, yeni sohbette yine renk gelir. Küfürlü ya da renk adlarıyla karışacak adlar kabul edilmez.
 - **Koyu mod:** Üstteki ay/güneş düğmesi koyu ve açık görünüm arasında geçer. Seçim yapılmamışsa cihazın ayarı geçerlidir.

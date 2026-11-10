@@ -373,3 +373,17 @@ test('renkler: iki tarafa hiçbir durumda aynı renk düşmez; güvenlik kodu al
   assert.match(codeOf(new Uint8Array(32).fill(255)), /^[0-9]{3} [0-9]{3}$/);
   assert.match(codeOf(new Uint8Array(32)), /^[0-9]{3} [0-9]{3}$/);
 });
+
+test('konu: aynı konuyu seçenler eşleşir; konusuz havuza ve başka konuya karışmaz', async () => {
+  fresh();
+  const k = await newKeys();
+  const find = (ip, tag) => handle({ op: 'find', cid: randId(12), pub: k.pub, tag }, { ip });
+  assert.equal((await find('10.3.0.1', 'muzik')).waiting, true);
+  assert.equal((await find('10.3.0.2', '')).waiting, true, 'konusuz arayan konulu bekleyenle eşleşmez');
+  assert.equal((await find('10.3.0.3', 'oyun')).waiting, true, 'başka konu eşleşmez');
+  assert.ok((await find('10.3.0.4', 'muzik')).matched, 'aynı konu eşleşir');
+  assert.ok((await find('10.3.0.5', '')).matched, 'konusuzlar kendi arasında eşleşir');
+  assert.ok((await find('10.3.0.6', 'oyun')).matched, 'bekleyen oyuncu da eşini bulur');
+  assert.equal((await find('10.3.0.7', 'siyaset')).err, 'bad', 'listede olmayan konu kabul edilmez');
+  assert.equal((await find('10.3.0.8', 42)).err, 'bad');
+});
