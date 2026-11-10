@@ -53,6 +53,17 @@
             <button type="button" data-tag="spor" aria-pressed="false">Spor</button>
           </div>
         </div>
+        <div id="moods-box" class="tags-box">
+          <span id="moods-label" class="tags-label">Ruh hali (isteğe bağlı)</span>
+          <div id="moods" class="tags" role="group" aria-labelledby="moods-label">
+            <button type="button" data-mood="mutlu" aria-pressed="false">Mutlu</button>
+            <button type="button" data-mood="uzgun" aria-pressed="false">Üzgün</button>
+            <button type="button" data-mood="moralsiz" aria-pressed="false">Moralsiz</button>
+            <button type="button" data-mood="sikilmis" aria-pressed="false">Sıkılmış</button>
+            <button type="button" data-mood="yalniz" aria-pressed="false">Yalnız</button>
+            <button type="button" data-mood="heyecanli" aria-pressed="false">Heyecanlı</button>
+          </div>
+        </div>
         <label class="check">
           <input id="age" type="checkbox">
           <span>18 yaşından büyüğüm</span>
@@ -79,10 +90,10 @@
     <section id="v-chat" class="view chat" hidden>
       <header class="chat-head">
         <div class="who">
-          <strong><i id="peer-dot" class="sq" aria-hidden="true"></i><span id="peer-name"></span></strong>
+          <strong><i id="peer-dot" class="sq" aria-hidden="true"></i><span id="peer-name"></span><span id="peer-mood" class="mood-chip" hidden></span></strong>
           <span id="peer-status" class="status" aria-live="polite"></span>
         </div>
-        <button id="btn-nick" class="me-tag" type="button" aria-label="Kendine ad ver">Sen <i id="me-dot" class="sq" aria-hidden="true"></i><b id="me-name"></b></button>
+        <button id="btn-nick" class="me-tag" type="button" aria-label="Adın, ruh halin, ne dinlediğin">Sen <i id="me-dot" class="sq" aria-hidden="true"></i><b id="me-name"></b></button>
         <button id="btn-end" class="btn sm ghost" type="button">Bitir</button>
       </header>
 
@@ -125,7 +136,7 @@
 
       <nav class="chat-foot" aria-label="Sohbet işlemleri">
         <button id="btn-games" class="btn xs ghost" type="button">Oyunlar</button>
-        <button id="btn-code" class="btn xs ghost" type="button">Güvenlik kodu</button>
+        <button id="btn-nudge" class="btn xs ghost" type="button">Titreşim</button>
         <button id="btn-report" class="btn xs text" type="button">Bildir</button>
       </nav>
     </section>
@@ -155,6 +166,24 @@
       </div>
     </section>
 
+  </div>
+
+  <!-- Profil: ad, ne dinliyorum, ruh hali, güvenlik kodu -->
+  <div id="profile" class="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="profile-title">
+    <form id="profile-form" class="sheet-card" autocomplete="off">
+      <h3 id="profile-title">Sen</h3>
+      <label class="field-label" for="p-nick">Adın (yalnızca bu sohbette)</label>
+      <input id="p-nick" class="sheet-input" type="text" maxlength="16">
+      <label class="field-label" for="p-listen">Ne dinliyorsun?</label>
+      <input id="p-listen" class="sheet-input" type="text" maxlength="60" placeholder="Şarkı ya da sanatçı">
+      <span id="p-moods-label" class="field-label">Ruh hali</span>
+      <div id="p-moods" class="tags left" role="group" aria-labelledby="p-moods-label"></div>
+      <p id="p-code" class="p-code"></p>
+      <div class="sheet-actions">
+        <button id="p-save" class="btn primary" type="submit">Kaydet</button>
+        <button id="p-cancel" class="btn ghost" type="button">Vazgeç</button>
+      </div>
+    </form>
   </div>
 
   <!-- Onay penceresi -->

@@ -387,3 +387,15 @@ test('konu: aynı konuyu seçenler eşleşir; konusuz havuza ve başka konuya ka
   assert.equal((await find('10.3.0.7', 'siyaset')).err, 'bad', 'listede olmayan konu kabul edilmez');
   assert.equal((await find('10.3.0.8', 42)).err, 'bad');
 });
+
+test('ruh hali: konu ve ruh hali birlikte eşleşir; biri farklıysa eşleşmez', async () => {
+  fresh();
+  const k = await newKeys();
+  const find = (ip, tag, mood) => handle({ op: 'find', cid: randId(12), pub: k.pub, tag, mood }, { ip });
+  assert.equal((await find('10.4.0.1', 'muzik', 'mutlu')).waiting, true);
+  assert.equal((await find('10.4.0.2', 'muzik', '')).waiting, true, 'aynı konu ama ruh hali yok: eşleşmez');
+  assert.equal((await find('10.4.0.3', '', 'mutlu')).waiting, true, 'aynı ruh hali ama konu yok: eşleşmez');
+  assert.ok((await find('10.4.0.4', 'muzik', 'mutlu')).matched, 'ikisi de aynı: eşleşir');
+  assert.ok((await find('10.4.0.5', '', 'mutlu')).matched, 'yalnız ruh hali seçenler kendi arasında eşleşir');
+  assert.equal((await find('10.4.0.6', '', 'yorgun')).err, 'bad', 'listede olmayan ruh hali kabul edilmez');
+});

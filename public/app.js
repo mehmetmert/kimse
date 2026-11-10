@@ -17,7 +17,9 @@ const NOSHOW_MS = 12000; // eşleşen kişi hiç görünmezse yeniden ara
 const TYPING_MS = 5500; // "yazıyor" balonunun ekranda kalma süresi
 const UNKNOWN = { name: 'Biri', hex: '#78818c' };
 const TAG_NAMES = { oyun: 'Oyun', muzik: 'Müzik', dert: 'Dertleşme', film: 'Dizi film', spor: 'Spor' };
-const TAG_WAIT_MS = 20000; // seçilen konuda bu kadar kimse çıkmazsa herkesle eşleş
+const TAG_WAIT_MS = 20000; // seçilen konu/ruh halinde bu kadar kimse çıkmazsa herkesle eşleş
+const MOODS = { mutlu: 'Mutlu', uzgun: 'Üzgün', moralsiz: 'Moralsiz', sikilmis: 'Sıkılmış', yalniz: 'Yalnız', heyecanli: 'Heyecanlı' };
+const NUDGE_GAP = 10000; // iki titreşim arası en az
 const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏']; // menüdeki tepkiler; başka bir şey kabul edilmez
 const KEY_RE = /^[A-Za-z0-9_-]{1,16}:\d{1,9}$/; // mesaj anahtarı: "kimlik:sıra"
 const LONG_MS = 450; // bu kadar basılı tutunca menü açılır
@@ -27,7 +29,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const cid = randId(12); // bu sekmenin geçici kimliği; yalnızca çevrimiçi sayacı ve kendinle eşleşmeyi önlemek için
 const cryptoOk = Boolean(window.crypto && crypto.subtle);
 
-const S = { view: 'home', run: 0, door: null, tk: null, chat: null, lastHb: 0, admin: '', homePolls: 0, tag: '' };
+const S = { view: 'home', run: 0, door: null, tk: null, chat: null, lastHb: 0, admin: '', homePolls: 0, tag: '', mood: '', listen: '' };
 
 // Sekme arkadayken gelen mesaj: başlıkta sayı ve kısa bir ses. Ses için tarayıcı bir dokunuş ister.
 const TITLE = document.title;
@@ -120,6 +122,7 @@ function show(view) {
   if (view !== 'chat') $('strip').style.background = ''; // sohbet dışında şerit bütün renkleri gösterir
   closeSheet();
   closeMenu();
+  $('profile').hidden = true;
 }
 
 // input verilirse pencerede bir yazı alanı çıkar; değeri düğmelerin işlevine geçer.
@@ -199,6 +202,7 @@ function renderHome() {
   $('btn-door').hidden = inRoom;
   $('btn-random').hidden = !inRoom;
   $('tags-box').hidden = inRoom;
+  $('moods-box').hidden = inRoom;
 }
 
 function homeErr(text) {
@@ -277,7 +281,8 @@ async function startSearch(notice = '') {
   const my = ++S.run;
   S.tk = null;
   let tag = S.tag; // konu seçildiyse önce o konuda arar
-  $('search-title').textContent = tag ? `Aranıyor · ${TAG_NAMES[tag]}` : 'Aranıyor';
+  let mood = S.mood; // ruh hali de
+  $('search-title').textContent = ['Aranıyor', TAG_NAMES[tag], MOODS[mood]].filter(Boolean).join(' · ');
   $('btn-lonely-door').hidden = true;
   show('search');
 
@@ -311,7 +316,7 @@ async function startSearch(notice = '') {
               keep: polls % 9 === 0 ? 1 : 0,
               hb: hb(),
             })
-          : await api('find', { cid, pub: keys.pub, tag });
+          : await api('find', { cid, pub: keys.pub, tag, mood });
       } catch {
         /* ağ hatası: aşağıda sayılır */
       }
@@ -339,16 +344,17 @@ async function startSearch(notice = '') {
       if (res.tk) S.tk = res.tk;
       if (res.matched) {
         S.tk = null;
-        return startDuo(my, keys, res.matched, tag);
+        return startDuo(my, keys, res.matched, tag, mood);
       }
-      if (tag && Date.now() - t0 > TAG_WAIT_MS && S.tk) {
+      if ((tag || mood) && Date.now() - t0 > TAG_WAIT_MS && S.tk) {
         // Bu konuda kimse yok: sıradan çık, herkesle eşleş.
         api('leave', { tk: S.tk }).catch(() => {});
         S.tk = null;
         tag = '';
+        mood = '';
         misses = 0;
         $('search-title').textContent = 'Aranıyor';
-        note = 'Bu konuda kimse yok, herkesle eşleşiyorsun';
+        note = 'Aynı seçimi yapan yok, herkesle eşleşiyorsun';
         noteUntil = Date.now() + 6000;
         paint();
         continue;
@@ -384,6 +390,10 @@ function newChat(kind, tok) {
     meId: '', // duo: 'a' ya da 'b'; oda: sunucunun verdiği üye kimliği
     me: UNKNOWN, // benim rengim
     nick: '', // bu sohbet için seçtiğim ad; boşsa rengim görünür
+    mood: S.mood, // ruh halim
+    listen: S.listen, // ne dinliyorum
+    lastNudge: 0,
+    nudgeIn: 0,
     people: new Map(), // kimlik → { name (renk adı), hex, c, gone, nick }
     cur: kind === 'duo' ? 0 : '0-0', // okuduğumuz yer
     out: [], // gönderilmeyi bekleyen şifreli mesajlar
@@ -443,7 +453,9 @@ function openChatView(C, firstLine) {
   $('btn-games').hidden = room;
   setVanish(C, false);
   $('game').hidden = true;
-  $('btn-code').hidden = room;
+  $('btn-nudge').hidden = room;
+  $('btn-nudge').disabled = false;
+  $('peer-mood').hidden = true;
   $('btn-report').hidden = room;
   document.querySelector('.chat-foot').hidden = room;
   $('me-name').textContent = C.nick || C.me.name;
@@ -473,7 +485,11 @@ function paintChat(C) {
     const peer = whoOf(C, C.peerId);
     $('peer-name').textContent = peer.name;
     $('peer-dot').style.backgroundColor = peer.hex;
-    text = 'çevrimiçi';
+    const pp = C.people.get(C.peerId) || {};
+    const chip = $('peer-mood');
+    chip.hidden = !pp.mood;
+    if (pp.mood && chip.textContent !== MOODS[pp.mood]) chip.textContent = MOODS[pp.mood];
+    text = pp.listen ? `çevrimiçi · Dinliyor: ${pp.listen}` : 'çevrimiçi';
     if (C.fails >= 2) [text, state] = ['bağlantın zayıf…', 'off'];
     else if (!C.peerSeen) [text, state] = ['bağlanıyor…', 'off'];
     else if (now - C.peerSeen > STALE_MS) [text, state] = ['bağlantısı bekleniyor…', 'off'];
@@ -638,6 +654,81 @@ function setMyNick(C, raw) {
   C.nick = tidyNick(raw);
   $('me-name').textContent = C.nick || C.me.name;
   enqueue(C, { t: 'n', x: C.nick }, true);
+}
+
+// ---------- ruh hali, ne dinliyorum, titreşim ----------
+const tidyListen = (raw) => clean(String(raw == null ? '' : raw).replace(/\s+/g, ' ').trim().slice(0, 60));
+
+function sendProfile(C, urgent = true) {
+  if (C.mood || C.listen) enqueue(C, { t: 'p', m: C.mood, l: C.listen }, urgent);
+}
+
+// Karşı tarafın ruh hali ve ne dinlediği: değişince sohbete bir satır düşer.
+function setProfile(C, id, m, l) {
+  const p = C.people.get(id);
+  if (!p) return;
+  const mood = typeof m === 'string' && MOODS[m] ? m : '';
+  const listen = tidyListen(l);
+  const name = p.nick || p.name;
+  if (mood !== (p.mood || '')) {
+    p.mood = mood;
+    if (mood) addMsg('sys', `${name} şu an ${MOODS[mood].toLocaleLowerCase('tr')}`);
+  }
+  if (listen !== (p.listen || '')) {
+    p.listen = listen;
+    if (listen) addMsg('sys', `${name} dinliyor: ${listen}`);
+  }
+}
+
+// Profil penceresi: ad (yalnızca bu sohbette), ne dinliyorum, ruh hali ve güvenlik kodu.
+let pMood = '';
+function paintPMoods() {
+  for (const b of $('p-moods').children) b.setAttribute('aria-pressed', String(b.dataset.mood === pMood));
+}
+
+function openProfile(C) {
+  $('p-nick').value = C.nick;
+  $('p-nick').placeholder = C.me.name;
+  $('p-listen').value = C.listen;
+  pMood = C.mood;
+  paintPMoods();
+  $('p-code').hidden = C.kind !== 'duo';
+  if (C.kind === 'duo') $('p-code').textContent = `Güvenlik kodu: ${C.code}. Karşı tarafta da aynıysa mesajlarınızı aranızda kimse okuyamaz.`;
+  $('profile').hidden = false;
+}
+
+function saveProfile(C) {
+  $('profile').hidden = true;
+  if (!alive(C)) return;
+  const nick = tidyNick($('p-nick').value);
+  if (nick !== C.nick) setMyNick(C, nick);
+  const listen = tidyListen($('p-listen').value);
+  if (listen === C.listen && pMood === C.mood) return;
+  C.listen = listen;
+  C.mood = pMood;
+  S.listen = listen; // sonraki sohbetlerde de kalsın
+  S.mood = pMood;
+  for (const x of $('moods').children) x.setAttribute('aria-pressed', String(x.dataset.mood === S.mood));
+  enqueue(C, { t: 'p', m: C.mood, l: C.listen }, true);
+}
+
+// Titreşim: MSN'deki gibi ekran sallanır, telefon titrer.
+function shake() {
+  const card = document.querySelector('.card');
+  card.classList.remove('shake');
+  void card.offsetWidth; // animasyonu yeniden başlat
+  card.classList.add('shake');
+  if (navigator.vibrate) navigator.vibrate([90, 50, 90]);
+  beep();
+}
+
+function gotNudge(C, id) {
+  const now = Date.now();
+  if (now - C.nudgeIn < 5000) return; // art arda gelen titreşim yok sayılır
+  C.nudgeIn = now;
+  shake();
+  addMsg('sys', `${whoOf(C, id).name} titreşim gönderdi`);
+  if (document.hidden) document.title = `Titreşim · ${TITLE}`;
 }
 
 // ---------- emoji tepkisi ----------
@@ -888,6 +979,10 @@ async function onPayload(C, id, msg) {
     paintSeen(C);
   } else if (msg.t === 'n') {
     setNick(C, id, msg.x);
+  } else if (msg.t === 'p') {
+    setProfile(C, id, msg.m, msg.l);
+  } else if (msg.t === 'z' && C.kind === 'duo') {
+    gotNudge(C, id);
   } else if (msg.t === 'u' && typeof msg.k === 'string' && KEY_RE.test(msg.k) && msg.k.slice(0, msg.k.lastIndexOf(':')) === id) {
     unsend(C, msg.k); // yalnızca kendi mesajını geri alabilir
   } else if (msg.t === 'e' && typeof msg.k === 'string' && KEY_RE.test(msg.k) && (msg.e === '' || REACTIONS.includes(msg.e))) {
@@ -974,7 +1069,7 @@ function autoAgain() {
 }
 
 // ---------- 1'e 1 sohbet ----------
-async function startDuo(my, keys, m, topic) {
+async function startDuo(my, keys, m, topic, mood) {
   let sess;
   try {
     sess = await openSession({ priv: keys.priv, myPub: keys.pub, peerPub: m.peerPub, slot: m.slot, room: m.room });
@@ -1006,10 +1101,12 @@ async function startDuo(my, keys, m, topic) {
   C.dice = new Dice((d) => enqueue(C, { t: 'd', d }, true), (ev) => onDice(C, ev), m.slot);
   C.match = new Match((b) => enqueue(C, { t: 'b', b }, true), (ev) => onMatch(C, ev));
   C.pend = { rps: null, dice: null, inv: null }; // karşı tarafın beklettiği düğmeli satırlar
-  $('btn-code').dataset.code = C.code;
+  $('p-code').dataset.code = C.code;
   openChatView(C, 'Mesajlar uçtan uca şifreli.');
   alertTab('Biri bulundu');
-  if (topic) addMsg('sys', `Ortak konu: ${TAG_NAMES[topic]}`);
+  const common = [topic && `Ortak konu: ${TAG_NAMES[topic]}`, mood && `${topic ? 'Ruh hali' : 'Ortak ruh hali'}: ${MOODS[mood]}`];
+  if (topic || mood) addMsg('sys', common.filter(Boolean).join(' · '));
+  sendProfile(C);
   paintGames(C);
   duoLoop(C);
 }
@@ -1088,6 +1185,7 @@ function addPerson(C, id, c, announce) {
   if (announce) {
     addMsg('sys', `${col.name} katıldı`);
     if (C.nick) enqueue(C, { t: 'n', x: C.nick }, false); // yeni gelen geçmişi görmez: adımı yeniden duyur
+    sendProfile(C, false);
   }
 }
 
@@ -1137,6 +1235,7 @@ async function startRoom() {
   $('btn-copy').textContent = 'Kopyala';
   $('btn-share-door').href = xIntent(`Anonim odaya gel:\n${doorUrl()}`);
   openChatView(C, present(C).length ? 'Mesajlar uçtan uca şifreli.' : 'Odada şimdilik yalnızsın. Linki paylaş.');
+  sendProfile(C);
   roomLoop(C);
 }
 
@@ -1434,6 +1533,13 @@ $('tags').addEventListener('click', (ev) => {
   S.tag = S.tag === b.dataset.tag ? '' : b.dataset.tag;
   for (const x of $('tags').children) x.setAttribute('aria-pressed', String(x.dataset.tag === S.tag));
 });
+
+$('moods').addEventListener('click', (ev) => {
+  const b = ev.target.closest('button[data-mood]');
+  if (!b) return;
+  S.mood = S.mood === b.dataset.mood ? '' : b.dataset.mood;
+  for (const x of $('moods').children) x.setAttribute('aria-pressed', String(x.dataset.mood === S.mood));
+});
 $('btn-find').onclick = () => (S.door ? startRoom() : startSearch());
 $('btn-door').onclick = createRoom;
 $('btn-lonely-door').onclick = createRoom;
@@ -1457,26 +1563,57 @@ $('btn-copy').onclick = async () => {
 };
 
 $('btn-nick').onclick = () => {
-  const C = S.chat;
-  if (!C) return;
-  const actions = [{ label: 'Kaydet', kind: 'primary', fn: (v) => setMyNick(C, v) }];
-  if (C.nick) actions.push({ label: 'Rengime dön', fn: () => setMyNick(C, '') });
-  actions.push({ label: 'Vazgeç' });
-  openSheet('Adın', 'Yalnızca bu sohbette görünür. Boş bırakırsan rengin kalır.', actions, {
-    value: C.nick,
-    placeholder: C.me.name,
-    max: 16,
-  });
+  if (S.chat) openProfile(S.chat);
 };
+
+$('p-moods').replaceChildren(
+  ...Object.entries(MOODS).map(([k, v]) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.mood = k;
+    b.textContent = v;
+    b.setAttribute('aria-pressed', 'false');
+    return b;
+  }),
+);
+
+$('p-moods').addEventListener('click', (ev) => {
+  const b = ev.target.closest('button[data-mood]');
+  if (!b) return;
+  pMood = pMood === b.dataset.mood ? '' : b.dataset.mood;
+  paintPMoods();
+});
+
+$('profile-form').addEventListener('submit', (ev) => {
+  ev.preventDefault(); // Enter da kaydeder
+  if (S.chat) saveProfile(S.chat);
+  else $('profile').hidden = true;
+});
+
+$('p-cancel').onclick = () => {
+  $('profile').hidden = true;
+};
+
+$('profile').addEventListener('click', (ev) => {
+  if (ev.target === $('profile')) $('profile').hidden = true;
+});
 
 $('sheet-input').addEventListener('keydown', (ev) => {
   if (ev.key === 'Enter') $('sheet-actions').firstElementChild.click(); // Enter ilk düğmeyle aynı
 });
 
-$('btn-code').onclick = () => {
+$('btn-nudge').onclick = () => {
   const C = S.chat;
-  if (!C || C.kind !== 'duo') return;
-  openSheet('Güvenlik kodu', `${C.code}\n\nKarşı tarafta da aynıysa mesajları aranızda kimse okuyamaz.`, [{ label: 'Tamam' }]);
+  if (!C || C.kind !== 'duo' || Date.now() - C.lastNudge < NUDGE_GAP) return;
+  C.lastNudge = Date.now();
+  enqueue(C, { t: 'z' }, true);
+  shake();
+  addMsg('sys', 'Titreşim gönderdin');
+  const b = $('btn-nudge');
+  b.disabled = true;
+  setTimeout(() => {
+    if (S.chat === C) b.disabled = false;
+  }, NUDGE_GAP);
 };
 
 $('btn-report').onclick = () => {
@@ -1722,6 +1859,7 @@ $('sheet').addEventListener('click', (ev) => {
 document.addEventListener('keydown', (ev) => {
   if (ev.key !== 'Escape') return;
   if (!$('menu').hidden) closeMenu();
+  else if (!$('profile').hidden) $('profile').hidden = true;
   else if (!$('sheet').hidden) closeSheet();
   else if (S.chat && S.chat.reply) setReply(S.chat, null);
 });
